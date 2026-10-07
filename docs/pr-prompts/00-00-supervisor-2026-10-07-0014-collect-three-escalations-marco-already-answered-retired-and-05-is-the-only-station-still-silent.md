@@ -250,6 +250,63 @@ nothing reads it as a gate. It becomes urgent if any instrument ever counts `blo
 Not moved this run: QUEUE_LAYOUT_V1 grandfathers pre-existing files and nothing is ever deleted, so a
 tidy-up is a deliberate batch like #2252, not a side effect of a COLLECT.
 
+### F10 — `Invoke-GitPush` defaults to a worktree that does not exist, and still printed a SHA that looked like proof
+
+⚠️ **Found AFTER this breadcrumb first merged (#2255), during this run's own push.** Recorded by
+amendment rather than left for the next run, because a finding that lives only in a chat transcript
+reaches nobody (STATION-CAPABILITIES §7).
+
+[MEASURED] I called `Invoke-GitPush -RepoPath … -Branch …`. The parameter is `-WorkTree`, not
+`-RepoPath`, so `-WorkTree` fell back to its default — `pipeline-lib.ps1:37`,
+`$script:WORKTREE = "C:\po-fix"` — and `Test-Path C:\po-fix` → **False**. The function's first
+statement, `Push-Location $WorkTree`, therefore failed:
+
+```
+Push-Location : Cannot find path 'C:\po-fix' because it does not exist.
+    at C:\ProjectOperations2\scripts\pipeline\pipeline-lib.ps1:365 char:5
+```
+
+🔴 **Then it kept going and printed `f873b089`, and `$LASTEXITCODE` was `0`.** With
+`$ErrorActionPreference = "Continue"` — which DOCTRINE §7 guard 7 *requires* in git scripts — the
+failed `Push-Location` does not stop the function, so `git rev-parse HEAD`, `git push` and the
+remote read-back all ran against the **ambient current directory** instead of `$WorkTree`. My cwd
+happened to be the right worktree, so the push genuinely succeeded. **Had my cwd been anywhere else,
+the function would have pushed the wrong tree, or nothing, and still returned a well-formed 40-hex
+SHA and exit 0.**
+
+This is DOCTRINE §1's own table entry — *"`git commit` succeeded / `$ErrorActionPreference="Stop"`
+had aborted the script before the commit — the log looked clean"* — reproduced in the very helper
+whose docstring says it exists to prevent it: *"Push, then READ BACK the remote SHA and prove it is
+ours. BUG THIS PREVENTS: … git's harmless CRLF warnings on stderr abort the script BEFORE the push -
+and the log still looks like it worked."* The read-back is real; what is unsound is that the
+read-back can be performed on a **different tree than the caller named** without anything warning.
+
+**What saved this run was not the instrument.** I did not accept the printed SHA. `git ls-remote
+origin refs/heads/board/collect-0014-retire-answered-escalations` →
+`f873b089c464175e9c1b41b11a77523204547ca5`, compared against `git rev-parse HEAD` →
+the same 40 hex. Two different commands, same answer, which is the only reason "pushed" is claimed
+here at all.
+
+[MEASURED] Blast radius is small and it is agents, not scripts:
+`Select-String -Path scripts/pipeline/*.ps1 -Pattern 'Invoke-GitPush'` returns **one** hit — the
+function definition itself at `pipeline-lib.ps1:357`. No `.ps1` in that directory calls it, so every
+caller is an agent typing it by hand, which is exactly the population that will get the parameter
+name wrong.
+
+**DISPATCHED** — **Station 06**, to stage it, because the fix is a `scripts/pipeline/` change and this
+run is ending. The complete-and-additive fix, RULE 1 first: **make `-WorkTree` mandatory, and make the
+function fail loud when the path is absent** — `[Parameter(Mandatory)]` plus an explicit
+`Test-Path`/`throw` before `Push-Location`, so a missing or mistyped tree is an error instead of a
+silent fallback to the ambient directory. *Solves it immediately* (this call shape can no longer
+half-succeed) *and in future* (no caller can inherit a dead default), and it *damages no data entry* —
+it only removes a default that resolves to a non-existent path, so no working invocation changes
+behaviour. The alternative — point the default at a real directory — fails the *future* half: it keeps
+a hidden default that silently pushes a tree the caller did not name, which is the actual defect.
+
+⚠️ **I did not fix it myself**: `scripts/pipeline/**` is outside Station 00's docs/`sot`/queue merge
+lane (STATION-CAPABILITIES §5), and INSTRUMENT_LANE_V1 governs *merging* a narrow instrument fix —
+it is not authority to write one unsmoked at the end of a run.
+
 ## WHAT I DID NOT DO
 
 - **Did not arm anything.** See F6 — a §5.5 sequencing decision, not mine, and not urgent yet.

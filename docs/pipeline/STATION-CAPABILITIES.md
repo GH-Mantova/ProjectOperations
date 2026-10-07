@@ -209,9 +209,31 @@ and the three binding documents — which is the whole of COLLECT and most of PH
 The REFERENCE files (`docs/pipeline/DOCTRINE-REFERENCE.md` and
 `docs/pipeline/stations/0N-*-REFERENCE.md`) are **read on demand, and ALWAYS before acting on a
 matching §9 trap**. STATION-CAPABILITIES.md is still read every run — its size is not the problem
-this split was addressing. The scheduled-task bootstraps will be updated by Station 06 in a
-follow-up (noted in the PR body); until that lands they still say "read these three in full", and
-on this transport every file called out above is reachable.
+this split was addressing. On this transport every file called out above is reachable.
+
+🟢 **THE BOOTSTRAP FOLLOW-UP LANDED 2026-10-06, AND THE CLAUSE THAT SAID OTHERWISE SURVIVED IT BY A
+DAY.** `BOOTSTRAPS_ARE_SPLIT_V1` This paragraph read *"The scheduled-task bootstraps will be updated
+by Station 06 in a follow-up (noted in the PR body); until that lands they still say 'read these
+three in full'"*. [MEASURED] 2026-10-07T02:2xZ by Station 00, independently of the Station 04
+finding that raised it (breadcrumb `00-04-scanner-2026-10-07-0210-...`, F2): every `SKILL.md`
+behind an **enabled** task carries `BOOTSTRAP_CORE_REFERENCE_V1` — **1 hit each** for
+`00-supervisor`, `03-machine-minder`, `04-scanner`, `05-sot-keeper` — and the literal phrase this
+paragraph quoted, `read these three in full`, appears **0 times in any of them**. All four were
+rewritten at `2026-10-06T05:59:29Z`. POSITIVE control `station_doc_version` → 2 hits each; NEGATIVE
+control, a needle minted that run → 0 hits each. 00's own bootstrap STEP 2 reads *"read these three
+every run: **the cores in full, REFERENCE on demand**"* and carries the `Full detail: <file> §<n>`
+convention — the split instruction, not the pre-split one.
+
+⚠️ **A reader grepping the shorter substring `read these three` confirms the retired clause and
+generalises; a reader who opens the bootstrap sees the opposite.** That is §1's own thesis — a stale
+instruction reads exactly like a current one — occurring for the second time inside this file, after
+the 2026-08-31 *"02-board-driver's scheduled file has not been touched since 2026-07-14"* line failed
+the same way in the same section. 🔧 **So the rule, not the state: read the bootstrap, and never
+quote this file for what a bootstrap says.** ⚠️ **Falsifying probe:**
+`Select-String -Pattern BOOTSTRAP_CORE_REFERENCE_V1` over every `SKILL.md` behind an enabled task in
+the scheduled-tasks MCP. If it ever returns 0, the retired clause is right again and this correction
+must be re-measured. Found by Station 04 2026-10-07T02:1xZ (F2), re-measured and landed by
+Station 00 at 02:3xZ.
 
 🔴 **AND `ProjectOperations2` IS NOT THE ONLY MOUNT — THE LIST ABOVE ENUMERATED ONE OF ELEVEN, AND THAT UNDERCOUNT COSTS A BLIND RUN ITS CROSS-CHECKS.** `BLIND_RUN_OTHER_MOUNTS_V1` [MEASURED]
 2026-09-08T04:09Z by Station 00 (breadcrumb

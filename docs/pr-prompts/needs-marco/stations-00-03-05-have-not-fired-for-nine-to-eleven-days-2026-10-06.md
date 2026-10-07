@@ -139,3 +139,44 @@ edited — the forbidden list in the station doc is unchanged and was obeyed.
 **Next falsifying probe, same shape:** read `lastRunAt` for `05-sot-keeper` after its next
 occurrence, **2026-10-07T14:22:37Z** (`nextRunAt`, measured this run). If it advances, the last third
 of this escalation is answered too and the whole file can be discharged.
+
+---
+
+## UPDATE 2026-10-07T02:3xZ — a SECOND station confirms 05 independently, and the 14:22Z probe has not fired yet
+
+Added by Station 00 (scheduled), run 2026-10-07T02:14Z, `origin/main` `500e07f3`. **Nothing is
+discharged by this update** — the probe the section above names (`lastRunAt` for `05-sot-keeper`
+after its next occurrence, `2026-10-07T14:22:37Z`) is still ~12 hours in the future at the time of
+writing. This update exists because a different station reached the same verdict on different
+instruments, which is worth recording before the probe fires.
+
+**[MEASURED] Station 04's own run at 2026-10-07T02:10Z** (breadcrumb
+`00-04-scanner-2026-10-07-0210-station-05-has-not-reported-for-twelve-days-and-capabilities-claims-the-bootstraps-are-unsplit-when-they-are-not.md`,
+F1) read the scheduled-tasks MCP independently and got `05-sot-keeper` `enabled: true`,
+cron `10 0 * * *`, **`lastRunAt 2026-09-27T21:38:18Z`** — byte-identical to the value this file
+recorded at 00:21Z, i.e. the 2026-10-06T14:22Z occurrence still has not fired and nothing has moved
+in the four hours between the two readings. 04 also confirmed from `--freshness` (exit 2) that
+`00`, `03` and `04` all read `ok` while `05` alone reads `MISSED` at 299.9h.
+
+**[MEASURED] Station 00's own reading this run, 02:15Z:** `--freshness` exit **2** —
+`00 1.0h ago ok`, `03 3.2h ago ok`, `04 0.1h ago ok`,
+`05 last 2026-09-24T14:23:00Z 299.9h ago MISSED`, `MISSED: 1 station(s)`. Three stations healthy in
+the same output, so the validator can produce a positive and the single negative is meaningful.
+
+🔧 **One new lead for you, and it is cheap to test first.** 04 points out that the open item
+`needs-marco/weekly-security-audit-is-off-and-the-task-store-reverts-verified-writes-2026-09-14.md`
+names, in its own title, a task store that **reverts verified writes**. That is a plausible mechanism
+for exactly this failure — a task that reads back as `enabled: true` while the store has silently
+discarded whatever makes it fire. If that is what is happening, then re-arming 05 will *appear* to
+succeed and then quietly revert, so **confirm the re-arm by reading `lastRunAt` after 05's next
+occurrence, not by reading `enabled` straight after the change.** This does not alter the options
+above; Option A remains the recommendation, and the task store remains yours.
+
+**[CANNOT MEASURE], unchanged from the 00:21Z update:** whether a human caused 00 and 03 to resume.
+`lastRunAt` records that a run happened, never who caused it.
+
+**Nothing in the task store was touched by this run** — not enabled, not disabled, not run, not
+edited.
+
+**Probe unchanged:** read `lastRunAt` for `05-sot-keeper` after `2026-10-07T14:22:37Z`. If it
+advances, the last third of this file can be discharged via `retire-escalation.mjs`.

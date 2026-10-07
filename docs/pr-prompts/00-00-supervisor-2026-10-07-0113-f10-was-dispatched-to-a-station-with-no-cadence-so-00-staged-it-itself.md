@@ -429,3 +429,94 @@ All four read against `origin/main` `e9414bae` **after** #2257 merged, via
 The board lease was released and `C:\po-wt\sup-0113` removed after this amendment's PR merged. The
 dev tree was fast-forwarded to `origin/main` and all four of the station doc's readings taken. Results
 are in this amendment's PR body rather than re-amended here, to avoid a third round trip.
+
+---
+
+## CORRECTION 2026-10-07T01:35Z — the "armed 0 at run end" claim above is WRONG, and the reason is a §9.5 trap
+
+Added by Station 00 in the same run, at `origin/main` `35cca04d`. **WHAT I DID NOT DO above says
+`armed (*-ready.md): 0` at run start and at run end. The second half is false** and is corrected here
+rather than left to be re-derived, because the next run measures the same glob and would have to
+decide whether its predecessor armed something or simply lied.
+
+[MEASURED] At run end, `Get-ChildItem docs\pr-prompts\*-ready.md` returned **1**, not 0:
+
+```
+rev-2258-ready.md
+  CreationTimeUtc  : 2026-10-07T01:33:34.1274689Z
+  LastWriteTimeUtc : 2026-10-07T01:33:34.1280632Z
+  bytes            : 2986
+  tracked?         : (empty - untracked)
+  gitignored by    : .gitignore:75:docs/pr-prompts/*-ready.md
+  first line       : "Use the pr-fix-reviewer agent to review PR #2258 (...) on GH-Mantova/ProjectOperations."
+```
+
+**It is a watcher-generated REVIEW JOB for this run's own amendment PR, not an armed prompt.**
+DOCTRINE §9.5 names exactly this: *"`rev-<n>-ready.md` are auto-generated REVIEW JOBS, not prompts —
+they have no YAML front matter by design."* The watcher created it 50 seconds before #2258 merged,
+which is normal behaviour and not a defect.
+
+### F8 — `armed (*-ready.md)` counts review jobs and armed prompts in one number, and the two have opposite meanings
+
+The sweep's section 4 line and my glob are the **same** `*-ready.md` pattern, so neither can
+distinguish *"a prompt is armed and the watcher is about to build it"* — a board state Station 00 owns
+and limits to one at a time — from *"the watcher queued a review of a PR that just merged"*, which is
+routine and which no station arms. The watcher's own log already separates them and shows the
+distinction mattering:
+
+```
+[2026-10-07T11:35:11.6722125+10:00] WATCHDOG[pid=36020] armed=1 runnable=0 -- nothing this node
+  can dequeue; a stale heartbeat is legitimate idle. Source: node-published (state age 4 min).
+```
+
+`armed=1 runnable=0`. The watchdog has the richer reading and uses it to decide a stale heartbeat is
+*legitimate idle* rather than a hang — but the number a station reads from the sweep is the bare
+`armed` count, and `runnable` is exactly the field that separates the two cases.
+
+⚠️ **The failure mode is a false ARMING LIMIT, not a false alarm.** The station doc tells 00 to ARM
+ONE AT A TIME and to copy the armed figure into its breadcrumb as the evidence for any future limit
+(MARCO_QUEUE_LINE_V1). A run that reads `armed: 1` from a leftover review job concludes the board
+already has work in flight and **declines to arm the prompt it was supposed to arm** — which is
+precisely what the next run is scheduled to do with
+`pr-gitpush-worktree-mandatory-HOLD.md`. The arming limit would be enforced against a number that is
+not measuring arming.
+
+⚠️ And the figures I copied into WHAT I MEASURED are themselves affected: `armed (*-ready.md): 0` was
+true at 01:15:03Z and is the honest reading for that moment, but it is **not** a claim that survives
+to run end, and §7's `[LIVE]` rule — *"true when measured, not true now"* — is the reason.
+
+**DEFERRED** — real, and not urgent tonight. The cheap complete-and-additive fix, RULE 1 first:
+have `status-sweep.ps1` section 4 report the two populations separately, e.g.
+`armed prompts: N (rev review jobs: M)`, by excluding the `rev-<digits>-ready.md` shape from the
+armed count and reporting it on its own line. *Solves it immediately* (a station reads the number it
+actually needs) *and in future* (the two populations can never be conflated again), and it *damages
+no data entry* — it is a reporting change that reads the same files and writes nothing. The
+alternative, teaching every station to subtract review jobs by eye, fails the future half: it is the
+remembered-not-mechanical shape DOCTRINE §9.2 records as having failed seven times.
+
+🟢 **`status-sweep.ps1` IS in the instrument lane** (`instrument-lane.json` `files[0]`), unlike
+`pipeline-lib.ps1` — so unlike F7 and F10 this one is a fix Station 00 could stage **and** merge
+itself under INSTRUMENT_LANE_V1, once CI is green and a fresh MERGE verdict exists for the head.
+Naming that here so the next run does not re-derive it.
+
+It becomes urgent the moment a run declines to arm on the strength of an `armed` count it did not
+decompose — so **the next run must check whether its `armed` reading is review jobs before treating
+it as an arming limit.** That is the one thing this correction exists to prevent.
+
+### Teardown, read back rather than asserted
+
+- **Board lease released**: `Exit-BoardLease -Actor "station-00"` completed without throwing.
+- **Worktree removed**: `git worktree remove C:\po-wt\sup-0113` exit 0;
+  `Test-Path C:\po-wt\sup-0113` -> **False**. F6 is closed.
+- **Dev tree fast-forwarded** `d4c26df4` -> `35cca04d`, exit 0, and **all four** of the station doc's
+  readings taken, not three:
+  - `git rev-list --left-right --count HEAD...origin/main` -> `0	0`
+  - `git diff --numstat origin/main` -> **EMPTY**
+  - `git diff --cached --name-status` -> **EMPTY**
+  - `git status --porcelain --untracked-files=no` -> **EMPTY** (the only one that catches a dirty
+    tracked file; the first three pass on a dirty tree)
+- **Board**: `gh pr list --state open` -> `[]`. Zero open PRs. Marco's queue is empty.
+- **The staged prompt is tracked**: `git ls-files -- docs/pr-prompts/pr-gitpush-worktree-mandatory-HOLD.md`
+  -> the path. It is armable by `git mv` next run.
+- **PRs this run**: #2257 `MERGED 2026-10-07T01:28:01Z`, #2258 `MERGED 2026-10-07T01:34:24Z`, both
+  read back from GitHub with `gh pr view --json state,mergedAt`.

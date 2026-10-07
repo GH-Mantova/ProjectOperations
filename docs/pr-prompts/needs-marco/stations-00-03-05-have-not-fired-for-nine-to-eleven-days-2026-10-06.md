@@ -96,3 +96,46 @@ the breadcrumb channel — the only one that closes — stays open-circuit.
 **Falsifying probe:** read `lastRunAt` for 00, 03 and 05 from the scheduled-tasks MCP after the next
 occurrence of each. If any has advanced without a human intervening, this escalation is wrong and
 must be re-measured.
+
+---
+
+## UPDATE 2026-10-07T00:21Z — the falsifying probe above has FIRED, and it narrows this to ONE station
+
+Added by Station 00 (scheduled), run 2026-10-07T00:14Z, `origin/main` `f88f8e37`. The probe this
+file names was run exactly as written: `lastRunAt` read from the scheduled-tasks MCP after the next
+occurrence of each.
+
+| task | cron | `lastRunAt` at 00:21Z | verdict against this escalation |
+|---|---|---|---|
+| 00-supervisor | `5 * * * *` | **2026-10-07T00:14:02Z** — this run | **ADVANCED** — firing hourly again (22:14Z, 23:14Z, 00:14Z) |
+| 03-machine-minder | `0 9 * * *` | **2026-10-06T23:02:55Z** | **ADVANCED** — fired on its next occurrence |
+| 04-scanner | `0 */4 * * *` | 2026-10-06T22:09:40Z | never in question; still healthy |
+| 05-sot-keeper | `10 0 * * *` | **2026-09-27T21:38:18Z** | **NOT ADVANCED** — its 2026-10-06T14:22Z occurrence did not fire |
+
+**So two thirds of this escalation is answered and the remaining third is `05-sot-keeper` alone.**
+`node scripts/pipeline/check-breadcrumb.mjs --freshness` (exit 2) agrees from the other instrument:
+`00 ... 1.0h ago ok`, `03 ... 1.2h ago ok`, `04 ... 2.1h ago ok`, `05 last 2026-09-24T14:23:00Z
+297.9h ago MISSED`, `MISSED: 1 station(s)`.
+
+⚠️ **I cannot tell you WHY 00 and 03 recovered, and that matters more than the recovery.** The probe
+asks whether `lastRunAt` advanced "without a human intervening" and I have no instrument that
+answers the human half — `lastRunAt` records that a run happened, never who caused it. So this is
+**[MEASURED]** that they advanced and **[CANNOT MEASURE]** whether you did something on 2026-10-06
+to make that happen. If you did not touch them, then two tasks resumed on their own after nine and
+eleven days of silence, which makes the cause intermittent rather than fixed, and Option A's second
+half — a detector that alarms on `lastRunAt` not advancing — is the only thing that would catch the
+next occurrence.
+
+**Nothing in the task store was touched by this run.** Not enabled, not disabled, not run, not
+edited — the forbidden list in the station doc is unchanged and was obeyed.
+
+**Questions 1–3 above are narrowed, not withdrawn:**
+
+1. Still open, and now specifically: did you restart 00 and 03 on 2026-10-06, or did they resume by
+   themselves?
+2. Still open and unchanged — may a diagnostic prompt read the keepalive / scheduler chain?
+3. Unchanged: the task store is yours. **05 is still silent and only you can restart it.**
+
+**Next falsifying probe, same shape:** read `lastRunAt` for `05-sot-keeper` after its next
+occurrence, **2026-10-07T14:22:37Z** (`nextRunAt`, measured this run). If it advances, the last third
+of this escalation is answered too and the whole file can be discharged.

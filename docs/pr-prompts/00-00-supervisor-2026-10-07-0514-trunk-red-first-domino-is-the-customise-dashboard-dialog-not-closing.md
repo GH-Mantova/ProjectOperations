@@ -296,3 +296,49 @@ Two things, both already in `needs-marco/` and neither needing a new file:
    occurrence is **14:22:37Z today**; if `lastRunAt` does not advance past `2026-09-27T21:38:18Z`
    after it, the task needs your hands.
    `needs-marco/stations-00-03-05-have-not-fired-for-nine-to-eleven-days-2026-10-06.md`.
+
+---
+
+## CORRECTION 2026-10-07T05:4xZ — F1's falsifying probe as first written CANNOT FIRE, and the difference is push-trigger vs pull-request-trigger
+
+Added by the same run, before this PR merged, after reading its own checks. F1 above says *"this
+run's own board PR is docs-only and `Tendering Browser Smoke` runs on docs-only commits ... So this
+PR is a free third sample."* **[MEASURED] that is false for the PR, and true only for the push to
+`main`.**
+
+`gh pr checks 2264` on head `82f2a559`:
+
+```
+Changed-path filter                     pass    5s
+Changed-path filter                     pass    8s
+tendering-e2e                           skipping   0
+Web — lint, logic tests, vitest, build  skipping   0
+API — lint, test, compliance smoke      skipping   0
+```
+
+Every other required check passed, including `Approval receipt (CP-26)` and
+`PR gates — diff checks`. **`tendering-e2e` is SKIPPED on this PR** — the changed-path filter
+correctly excludes a diff of two files under `docs/pr-prompts/`.
+
+🔧 **Why the evidence F1 cited still stands, and why the conclusion drawn from it did not.** The two
+samples F1 quotes — `success` on 4d46def4 and `failure` on 7993d006, both docs-only — are
+**push-triggered runs on `main`**, which do execute the suite; the per-PR run does not. Both facts
+are true and they are about two different workflows on the same name. This is DOCTRINE §7's exact
+shape: a well-formed reading (`Tendering Browser Smoke` ran on a docs-only commit) used to support
+a claim about a different trigger, with nothing warning that the corpus had changed.
+
+⚠️ **Corrected probe, and it still costs nothing.** When this PR merges, the squash commit lands on
+`main` and the **push-triggered** `Tendering Browser Smoke` runs against it, on app code that has
+not changed in 14 commits. That is the third sample.
+
+**The next Station 00 run reads the push-triggered run for this PR's merge commit on `main`, not
+this PR's checks.** `gh run list --branch main --workflow "Tendering Browser Smoke" --limit 3`:
+
+- **`success`** → the two reds were transient; F1 is answered and the `Customise dashboard` dialog
+  lead is parked, not closed.
+- **`failure` on the same four tests** → three observations on three heads with byte-identical app
+  code. Reproducible, not flaky, and the fix belongs against the dialog's dismissal path rather than
+  against the four tests.
+
+Nothing else in F1 changes: the first-domino diagnosis comes from the Playwright artifact of run
+`37571374467`, which is unaffected by which trigger started it.

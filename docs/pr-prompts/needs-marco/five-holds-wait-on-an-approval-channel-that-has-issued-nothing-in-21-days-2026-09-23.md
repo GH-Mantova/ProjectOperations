@@ -217,3 +217,106 @@ release note without meeting the never-arm sentence can reasonably reach the oth
 why (three `requires_on_main` gates still bind). For `pr-fv2-formrule-contract` the reason is
 different and is this addendum: the release cleared the only *mechanical* layer, and the *remembered*
 layer — the never-arm list — was not updated either way.
+
+
+---
+
+## UPDATE 2026-10-08T23:2xZ — it is EIGHT holds and 36 days, trunk is green, the board is empty, and the last other explanation is gone
+
+Added by Station 00 (scheduled), run `2026-10-08T22:38:06Z`, `origin/main` `375f4386`. Breadcrumb
+`00-00-supervisor-2026-10-08-2238-all-four-stations-never-fired-for-41h-while-the-box-stayed-up-and-no-hold-is-armable.md`,
+F4. **Nothing above is withdrawn.** This update exists because the number changed and, more
+importantly, because the one competing explanation for an empty board has been eliminated by
+measurement.
+
+### The count, with the reject code for every prompt on the board
+
+**[MEASURED]** `scripts/pipeline/triage-holds.ps1`, read-only (`--dequeue` never passed), exit 0,
+**both of its own controls PASS** — `GIT control: PASS` (read `origin/main:docs/pipeline/DOCTRINE.md`,
+30282 chars, so the gate probes can actually run) and `SPENT control: PASS` (`lint-prompt.mjs` exit 3
+on the fixture, so the SPENT bucket is measurable):
+
+```
+TOTALS  spent=0 of 13 evaluated  gates-satisfied=0  still-gated=13  unreadable=0
+        of 13 prompts (HOLD=13, ready=0, LOOPING=0)
+```
+
+| prompt | reject code |
+|---|---|
+| pr-524-rates-b-slice2-canonical | **HUMAN_GATE_PRESENT** |
+| pr-nav-jobs-projects-merge | **HUMAN_GATE_PRESENT** |
+| pr-queue-layout-sot-entry | **HUMAN_GATE_PRESENT** |
+| pr-retire-tenderclientnote-s2 | **HUMAN_GATE_PRESENT** |
+| pr-scopecards-s8b-azure-maps-travel | **HUMAN_GATE_PRESENT** |
+| pr-sec-a2-email-codes-and-reset-links | **HUMAN_GATE_PRESENT** |
+| pr-siteid-notnull-backfill | **HUMAN_GATE_PRESENT** |
+| pr-vendor-invoice-ocr | **HUMAN_GATE_PRESENT** |
+| pr-fv2-ai-digests | FILE_GATE_NOT_RELEASED |
+| pr-fv2-output-channels | FILE_GATE_NOT_RELEASED |
+| pr-rates-s11c-drop-legacy-tables | FILE_GATE_NOT_RELEASED |
+| pr-tenant-mt4-s2-ownership-migration | FILE_GATE_NOT_RELEASED |
+| pr-tipid-s3-retire-the-name-guard-for-an-id-check | GATE_NOT_RELEASED |
+
+**Eight waiting on you personally, not five.** Filed 2026-09-23 at five holds and 21 days; it is
+**eight holds and 36 days** now.
+
+**[MEASURED]** Station 04, running independently in the same hour (breadcrumb
+`00-04-scanner-2026-10-08-2238-gate-liveness-tipid-s3-first-machine-gate-is-always-true.md`),
+reached `spent=0 of 13 gates-satisfied=0 still-gated=13 unreadable=0` with its own instrument, and
+separately verified every `HUMAN_GATE_PRESENT` prompt carries a real lint anchor
+(`<!-- watcher: do-not-arm -->`, a case-sensitive `DO NOT ARM` line, or an `Arm ONLY` line) — with a
+freshly minted needle as the negative control returning 0 hits across all nine files. **The gates
+are real; none of these eight is held by a stale or phantom marker.**
+
+### What is new: the competing explanation is gone
+
+The previous Station 00 run (2026-10-07T05:14Z, F4) declined to arm anything and gave a reason that
+was partly its own judgement: trunk was RED, so arming a feature slice that touches `apps/web` would
+have produced a PR whose e2e result could not be distinguished from the trunk failure. It named
+*"an empty board with a green trunk"* as the thing that would make this urgent.
+
+**[MEASURED]** that condition is now met. `main` CI on `375f4386` → **4 success / 0 failed (trunk
+green)**; the push-triggered `Tendering Browser Smoke` on that head (`run=37577042338`) is
+`success`, and so are `CI`, `CodeQL` and `Deploy`. The single red (`7993d006`,
+`run=37571374467`) is bracketed by a success before it and a success after it, on application code
+unchanged for fourteen commits — one red in twenty-one runs of that workflow on `main`.
+
+🔴 **So the board is empty with a green trunk, and arming is still impossible — not as a judgement
+call, but as a measurement: `gates-satisfied = 0`.** No decision available to any station changes
+that. There is no arming limit (your ruling, 2026-10-03), nothing is armed (`*-ready.md` = 0), and
+the only open PR is #2261, held by its own `do-not-merge` label. **The pipeline has no work it is
+permitted to start.**
+
+### The question, unchanged in kind, cheaper than it was
+
+Everything above this update still stands as written. The ask is narrower now:
+
+> **Releasing any ONE of the eight restarts the board.** The four `FILE_GATE_NOT_RELEASED` and one
+> `GATE_NOT_RELEASED` prompts are waiting on predecessors that cannot land while nothing can be
+> armed, so a single release does not just unblock one slice — it re-starts the chain that feeds the
+> other five.
+
+🔧 **RULE 1 ordered, for the channel rather than for any one prompt:**
+
+> **(a) COMPLETE + ADDITIVE — release one human-gated prompt and say which, in a file a station can
+> read.** Removing the `DO NOT ARM` / `<!-- watcher: do-not-arm -->` anchor from one prompt, or
+> dropping an approval marker at the path its gate names, unblocks the board today and leaves a
+> durable, machine-readable record of the decision. Writes no production data, removes no CI gate,
+> weakens nothing. **Fails neither half.**
+> **(b) ADDITIVE BUT INCOMPLETE — tell a station in chat which one is released.** Unblocks today;
+> no scheduled run can read a chat (`needs-marco/rule-2-clearance-lives-in-a-chat-no-scheduled-run-can-read-2026-09-10.md`
+> is the open item for exactly this), so the next run re-asks. **Fails the *future* half.**
+> **(c) COMPLETE BUT DAMAGING — let Station 00 arm a human-gated prompt on its own judgement.**
+> Permanently removes the stall, and hands an autonomous station prompts that include irreversible
+> column drops and a production-data migration. **Fails the *without damaging* half. Not
+> recommended; stated for completeness.**
+
+**PROBE:** `triage-holds.ps1`'s `gates-satisfied` count. The moment it is non-zero, arming is
+Station 00's again, and this file narrows or discharges via `retire-escalation.mjs`.
+
+⚠️ **One piece of context that is not an excuse and should not be read as one.** All four stations
+lost 41 hours to a scheduler stall ending at `2026-10-08T22:38Z`
+(`needs-marco/stations-00-03-05-have-not-fired-for-nine-to-eleven-days-2026-10-06.md`, update of the
+same date). That explains why no station *asked* you about this for two days. It does not change the
+count, the reject codes, or the fact that the gates are yours: the eight anchors were measured this
+run, on the current head, with controls.

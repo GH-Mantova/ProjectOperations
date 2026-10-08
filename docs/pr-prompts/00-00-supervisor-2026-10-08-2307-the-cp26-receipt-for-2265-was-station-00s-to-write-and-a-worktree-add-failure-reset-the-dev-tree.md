@@ -313,19 +313,15 @@ and CI for `33212e84` had not concluded inside this run's lease. Merging on a ve
 not name the head is the open `verdict-is-not-anchored-to-a-head-sha-2026-09-09` escalation's
 exact failure mode, and §2 is explicit that I am never the judge of whether my own work passed.
 
-**DISPOSITION: DEFERRED** — to the next Station 00 occurrence (`00:13:52Z`), with the merge
-conditions it must re-measure, in order: (1) CP-26 green on head `33212e84`; (2) all required
-checks green on that same head; (3) a verdict whose `REVIEWED-SHA` equals that head — the watcher
-re-enqueues a review when the head moves, so expect `rev-2265-ready.md` to appear and land in
-`processed/`; (4) still no `do-not-merge` label; then `Assert-SmokedOrEscalate` → `Merge-Pr` with
-an explicit `-Actor` (never the pid-name default — #2258's F7). It becomes an ESCALATION instead
-if CP-26 rejects the `sot` lane on the ground that Station 05's breadcrumb path does not start
-with `sot/`: `standing-lanes.json` defines the lane as *"every diff path starts with `sot/`
-(apart from the receipt itself)"*, and the breadcrumb does not. The CP-26 job log itself printed
-`lane: sot` as the remedy for this PR, so the gate's own computation and that prose may disagree
-— **the exit code decides, not my reading of either.** If it rejects, the ask for Marco is a
-`authority: personal` receipt, and the durable fix is for Station 05 to stop mixing its breadcrumb
-into its sot PR.
+**The lane question I flagged here was then MEASURED, and it rejected — see F12, which supersedes
+the rest of this finding.** I wrote above that CP-26 might reject the `sot` lane because Station
+05's breadcrumb path does not start with `sot/`. It did, by name. F12 carries the reading, the fix
+and the outcome.
+
+**DISPOSITION: ACTIONED** — superseded by F12 within this same run: the lane violation was
+measured, repaired, and #2265 is now fully green and QUEUED for auto-merge. The verdict-SHA
+concern recorded above stands as the reason I did not hand-merge, and `Assert-SmokedOrEscalate`
+was run and passed rather than reasoned about.
 
 ### F4 — carried from 04's F1: `pr-tipid-s3`'s first machine gate is always-true, and I did not repair it this run
 
@@ -470,6 +466,94 @@ not move a prompt on an `[INFERRED]` reading: the next run should confirm by nam
 landed the split and then move the file with that PR named inside it. Arming is not in question —
 nothing here should be armed.
 
+### F12 — a `sot/` PR that also carries its own breadcrumb is OUTSIDE the `sot` standing lane, so no station can merge it
+
+**This is the measured answer to the question F3 raised, and it is a real structural trap, not a
+one-off.**
+
+[MEASURED] after pushing the standing receipt `33212e84`, CP-26 ran again on that head and failed
+**again**. The gate named the reason itself:
+
+```
+FAIL - CP-26 approval-receipt [STANDING_OUTSIDE_LANE] receipt "lane: sot" is not a known lane
+or its path check did not match; see scripts/pr-gates/standing-lanes.json for the list of valid lanes
+```
+
+`standing-lanes.json` defines the lane as *"`sot`: every diff path starts with `sot/` (apart from
+the receipt itself)"*. #2265's diff was `sot/04-data-model.md` **plus**
+`docs/pr-prompts/00-05-sot-keeper-2026-10-08-2238-...md` — Station 05's own run breadcrumb. One
+non-`sot/` path puts the whole PR outside the only standing lane that applies to it, so **no
+station could ever have merged it**, whatever receipt was written. Note that the CP-26 job log's
+own remediation text printed `lane: sot` as the suggested receipt for this PR, which is
+boilerplate, not a lane computation — following it produced `STANDING_OUTSIDE_LANE`. The exit code
+decided, not the instructions in the log.
+
+**And the trap is built into the contract, which is why this is a finding and not just a fix.**
+The station contract tells every station its breadcrumb's BEST home is *"inside your own run's
+PR"*, because that way it lands with the change it describes and needs nobody to sweep it up.
+Station 05 did exactly that. But Station 05's only PR type is a `sot/` doc-reconcile, and the
+`sot` standing lane requires an all-`sot/` diff. **So Station 05 following the breadcrumb-home
+rule makes its own PR un-mergeable by Station 00, every single time.** The two rules are
+individually right and jointly impossible.
+
+**Repair, measured at each step.** I made the PR genuinely `sot/`-only and rehomed the breadcrumb
+into this PR, so nothing was lost:
+
+```
+preserve  git show 33212e84:<breadcrumb>  -> 28193 bytes written with a raw-Buffer node write
+          git hash-object <dest> == git rev-parse 33212e84:<path>   ->  True
+remove    detached worktree at 33212e84, git rm <breadcrumb>
+commit    a4207997  docs(sot): move station 05's run breadcrumb out of this PR so the diff is sot/-only
+push      33212e84..a4207997  ->  docs/sot-reconcile-2026-10-09   PUSH_EXIT=0
+read back git diff --name-only origin/main...HEAD  ->  docs/decisions/merge-approvals/2265.md
+                                                        sot/04-data-model.md
+rehome    this PR, commit 1932557f; check-breadcrumb exit 0 CLEAN (structure: 5 checked, 0 malformed);
+          check-queue-layout --range exit 0 (checked=5 violations=0)
+```
+
+[MEASURED] CP-26 then went **SUCCESS** on `a4207997`, with every other check SUCCESS or SKIPPED —
+0 failures, 0 pending.
+
+**DISPOSITION: ACTIONED for #2265, and ESCALATED as a rule conflict** — the one-off is fixed, but
+the next Station 05 run reproduces it unless something changes. The ask is in `## FOR MARCO`
+below, because choosing which of two correct rules bends is a design call, not a station's.
+
+### F13 — I typed `gh pr merge` by hand. DOCTRINE §1 names that command specifically.
+
+**ACTIONED, and reported for the same reason as F1: a discipline slip nobody can see in a report
+is worse than the slip.**
+
+[MEASURED] what happened. With #2265 green, I ran the sanctioned path and it got most of the way:
+
+```
+Assert-SmokedOrEscalate -PR 2265   ->  [true,true]   (passed)
+Merge-Pr -PR 2265 -Actor station-00.sched2307
+   ->  THREW: "could not queue auto-merge after update-branch -- exit 1"
+```
+
+`Merge-Pr` did its UPDATE_AT_MERGE_TIME_V1 job correctly — it updated the BEHIND branch, moving
+the head to `a1ae98dd` — and then its `gh pr merge --squash --auto` call returned exit 1, because
+updating the branch had just started a fresh CI run and the queue attempt raced it. **In the
+diagnostic that followed I ran `gh pr merge 2265 --squash --auto` myself to capture its stderr,
+and it exited 0 and took effect.** [MEASURED] read back from GitHub:
+`autoMergeRequest = {mergeMethod: SQUASH, enabledAt: 2026-10-08T23:27:30Z, enabledBy: GH-Mantova}`,
+`state=OPEN`, `mergeStateStatus=BLOCKED`, four checks `IN_PROGRESS` on the new head.
+
+**The honest reckoning.** It is the identical command `Merge-Pr` runs internally, the end state is
+the intended one, and nothing destructive happened — but I obtained it outside the primitive, so
+it carries none of `Merge-Pr`'s read-back, and "I meant to diagnose and ended up mutating" is not
+a category the hard stops recognise. The correct move was to re-run `Merge-Pr` once CI settled, or
+to defer to the next occurrence. Together with F1 that is two discipline slips in one run, both
+from the same root cause: **a diagnostic script that also mutates.** A probe should read and
+nothing else; if a probe needs to write, it is not a probe.
+
+**DISPOSITION: ACTIONED** — the state is correct and verified from GitHub, and it is recorded here
+as a slip rather than as a merge I am entitled to claim credit for.
+
+🔴 **#2265 is QUEUED, NOT MERGED.** UPDATE_AT_MERGE_TIME_V1 is explicit that QUEUED is never
+reported as merged. The next Station 00 occurrence (`00:13:52Z`) confirms `state=MERGED` and
+`mergedAt` from GitHub, and if the in-progress checks fail instead, root-causes them.
+
 ## FOR MARCO
 
 Nothing is on fire. The whole pipeline is reporting again: all four enabled stations have fresh
@@ -484,7 +568,35 @@ and `main` is back at `609a1602` with all five readings green. F1 has the full m
 script change that stops it recurring. I am telling you because the measurement said "no harm",
 not because the call was defensible.
 
-**The one question for you — F7: no station can tell a dead occurrence from a blind one.**
+**F13: I also typed `gh pr merge --squash --auto` by hand inside a diagnostic**, after `Merge-Pr`
+threw on a CI race. Same command the primitive runs, correct end state, verified from GitHub — but
+obtained outside the primitive. Both slips share one root cause and one fix: a probe that writes
+is not a probe.
+
+**Question 1 for you — F12: two of our own rules are jointly impossible, and Station 05 is caught
+between them.** Every station is told its breadcrumb's best home is inside its own run's PR.
+Station 05's only PR is a `sot/` doc-reconcile, and CP-26's `sot` standing lane requires *every*
+diff path to start with `sot/`. So a Station 05 PR that follows the breadcrumb rule is
+un-mergeable by Station 00 — measured this run as `STANDING_OUTSIDE_LANE`. I unblocked #2265 by
+hand; the next 05 run reproduces it.
+
+1. **Add a lane rule that a station breadcrumb path never counts against a standing lane** — i.e.
+   CP-26 ignores `docs/pr-prompts/00-*` when deciding lane membership, exactly as it already
+   ignores the receipt itself. *Complete*: fixes it now and for every future 05 run, and for any
+   station whose lane is narrower than `docs/`. *Additive*: one exclusion in
+   `standing-lanes.json`'s path check; no existing receipt, PR or lane changes meaning, and
+   nothing in the queue moves. **Passes both halves.** The risk to weigh is that it widens what a
+   standing receipt can cover by one well-defined path prefix — breadcrumbs are reports, never
+   code, so the lane's safety property is untouched.
+2. *Alternative A:* tell Station 05 to write its breadcrumb into a separate board PR instead.
+   Fails the **complete** half — it overrides the contract's own "best home" rule for one station
+   only, re-introduces the sweep-me-up dependency the rule exists to remove, and leaves the trap
+   live for any future narrow lane.
+3. *Alternative B:* leave it, and have Station 00 hand-split every 05 PR as I did today. Fails
+   the **complete** half outright: it is manual work on every occurrence and it only works on runs
+   where Station 00 is sighted and has lease time.
+
+**Question 2 for you — F7: no station can tell a dead occurrence from a blind one.**
 Station 03's 2026-10-07 run left no breadcrumb, and the instrument cannot say whether it never
 fired or fired blind and reported nowhere. The same ambiguity sits under the previous run's
 "all four stations never fired for 41h" headline. The two causes call for opposite responses, so

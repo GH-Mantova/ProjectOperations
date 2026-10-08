@@ -550,16 +550,76 @@ nothing else; if a probe needs to write, it is not a probe.
 **DISPOSITION: ACTIONED** — the state is correct and verified from GitHub, and it is recorded here
 as a slip rather than as a merge I am entitled to claim credit for.
 
-🔴 **#2265 is QUEUED, NOT MERGED.** UPDATE_AT_MERGE_TIME_V1 is explicit that QUEUED is never
-reported as merged. The next Station 00 occurrence (`00:13:52Z`) confirms `state=MERGED` and
-`mergedAt` from GitHub, and if the in-progress checks fail instead, root-causes them.
+**#2265 was QUEUED when the lines above were written, and is now CONFIRMED MERGED.**
+UPDATE_AT_MERGE_TIME_V1 forbids reporting QUEUED as merged, so this claim rests on a read-back
+taken after the queue drained, not on the queue being enabled. [MEASURED] 23:29:44Z:
+
+```
+gh pr view 2265 --json state,mergedAt,mergeStateStatus,labels
+->  state=MERGED   mergedAt=2026-10-08T23:28:57Z   labels=(none)
+```
+
+The auto-merge queue carried it in once the four in-progress checks on `a1ae98dd` went green.
+
+### F14 — a SECOND Station 03 breadcrumb landed while this run was mid-flight, and it is collected here
+
+[MEASURED] at 23:29Z, after my own breadcrumb was written and pushed,
+`git status --porcelain` showed a third untracked station report:
+`00-03-machine-minder-2026-10-08-2306-the-watcher-child-dies-on-an-unguarded-get-ciminstance-and-the-supervisor-that-reports-it-is-no-longer-running.md`.
+Station 03 fired twice inside sixteen minutes (`lastRunAt 23:06:07Z`, against the `22:51:07Z` run
+already collected above) and its second report is the more serious of the two. **It is committed
+to this PR**, so it reaches Marco with the rest; a breadcrumb left untracked reaches nobody.
+
+Its own dispositions carried five items DISPATCHED to Station 00. Dispositioning each, which is
+the duty that closes the channel:
+
+**(a) Seven `WATCHER-CRASH-LOOP` escalations (2026-10-03 → 10-06) share ONE named cause: an
+unguarded `Get-CimInstance` in `scripts/pr-watcher/start-watcher.ps1`.** A transient WMI hiccup
+kills the watcher child; five identical child failures stop the supervisor, which is how the queue
+goes silent. 03 states the fix is a code change under `scripts/pr-watcher/**`.
+**DISPOSITION: DEFERRED to the next Station 00 occurrence, as a staged prompt — not a hand-push.**
+Reasons, both measured: `scripts/pr-watcher/**` is the one path DOCTRINE §9.5 says **requires a
+watcher restart** before the running `index.mjs` picks it up, and 03 measured the watcher as
+healthy right now with its three generations intact on the *same PIDs* as fifteen minutes earlier.
+Hand-pushing a launcher change at 23:35Z and restarting a working watcher is how a quiet board
+becomes a dead one. The correct route is a prompt through the normal lane, and the fix itself is
+cheap and additive: add `-ErrorAction Stop` inside a `try`/`catch` (or `-ErrorAction
+SilentlyContinue` plus an explicit null check) at each `Get-CimInstance` call site, so a WMI
+hiccup is retried rather than fatal. **It becomes urgent on the next crash-loop escalation** —
+and see (b), which is why that escalation may not arrive.
+
+**(b) The component that WRITES those crash-loop escalations is no longer running.** 03's F3.
+This is the compounding half: the next crash loop produces silence instead of a report, and
+silence is indistinguishable from health (DOCTRINE §3, and this run's own F7).
+**DISPOSITION: ESCALATED** — folded into Question 2 for Marco below rather than raised as a third
+question, because it is the same defect class: *the pipeline cannot currently tell a dead thing
+from a quiet one*, now measured at three independent layers (a missed station occurrence, a
+missed scheduled fire, and a missing crash reporter).
+
+**(c) Sweep 03's breadcrumbs into a board PR.** **DISPOSITION: ACTIONED** — both of 03's
+breadcrumbs (22:51 and 23:06) are in this PR, validated by `check-breadcrumb.mjs` exit 0.
+
+**(d) Prune the orphan worktrees.** **DISPOSITION: DEFERRED** — already F6 above, same reasoning:
+verification must complete before the destructive step (§5 stop 4).
+
+**(e) Retire a stale escalation by moving the file.** **DISPOSITION: DEFERRED** to the next
+occurrence, which has the `retire-escalation.mjs` form the station doc prescribes
+(`--file / --actor / --evidence / --record-into`). I will not retire an escalation in the last
+minutes of a lease on a reading I have not taken myself — F2 of this run is precisely what
+happens when a prompt file is moved or removed without that care.
+
+🔴 **A third Station 03 run may fire again before the next Station 00 occurrence.** Two runs in
+sixteen minutes against a `0 9 * * *` daily cron is itself unexplained — `lastRunAt` holds only
+the most recent fire, so I cannot measure why. Named here so the next COLLECT looks for a
+`00-03-*-2026-10-08-23xx` or later breadcrumb rather than assuming these two are all of them.
 
 ## FOR MARCO
 
 Nothing is on fire. The whole pipeline is reporting again: all four enabled stations have fresh
 breadcrumbs and `check-breadcrumb.mjs --freshness` exits 0 CLEAN. The watcher is healthy and was
-seen consuming a review job end-to-end. One PR (#2265, Station 05's `sot/` reconcile) is one CI
-cycle from merging and needs nothing from you. One PR (#2261) is yours and unchanged.
+seen consuming a review job end-to-end. **#2265, Station 05's `sot/` reconcile, is MERGED**
+(23:28:57Z, read back from GitHub) — it needed nothing from you. One PR (#2261) is yours and
+unchanged, and this run's own board PR is open behind it.
 
 **You should know that I breached a hard stop this run and reversed it.** A failed
 `git worktree add` let a `git reset --hard` run in `C:\ProjectOperations2`, moving local `main`

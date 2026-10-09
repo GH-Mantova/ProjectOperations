@@ -404,3 +404,79 @@ merged** - this station's own docs-only board PR, inside its `docs/` lane, throu
 `Assert-SmokedOrEscalate` -> `Merge-Pr`, with CP-26 PASSing because a docs-only diff arms no receipt
 requirement. **#2261 was still not merged, and no label was touched.** Every other line of that
 section stands.
+
+---
+
+## CORRECTION 2026-10-09T03:46Z - F21 is RESOLVED, and its `[CANNOT MEASURE]` was answerable. The mechanism is the tool-call timeout, not a lying instrument.
+
+**true at** `origin/main` **71d063e8** - same run. This supersedes the previous correction's
+`[CANNOT MEASURE]` line, which is retracted. DOCTRINE 7.1's re-read rule: a `[CANNOT MEASURE]` I
+can measure is not a limitation, it is an unfinished probe, and leaving it on `main` would hand the
+next run a false dead end.
+
+### Both of F21's branches are now closed, and NEITHER is an instrument lie
+
+**Step 4 - the `squash-merge failed (exit 1)` - was the cwd fault.** F21 named it as a confound;
+F21's own falsifying probe then fired, in this run, on #2274: the same `Merge-Pr -PR <n> -Actor
+<a>` call with `Set-Location C:\ProjectOperations2` at the top of the script returned
+`MERGE_RETURNED_STATE=MERGED`, cleanly, no throw. [MEASURED] `gh pr view 2274 --json
+number,state,mergedAt` -> `MERGED`, `2026-10-09T03:45:47Z`; `origin/main` moved to `71d063e8`;
+content control, the string `F21:` is present in this file on `origin/main`. **`Merge-Pr` is not
+defective. `gh` resolves its repository from the working directory, and the retry script ran from
+`C:\po-sup-fix-scripts`, which is not a repository** - the same script printed `fatal: not a git
+repository` for its own inline `gh pr view`.
+
+**Step 3 - the `OPEN` / `mergedAt: null` read - was NOT stale. It was EARLY, and the ordering is
+measurable.** [MEASURED] `gh pr view 2273 --json number,createdAt,mergedAt` ->
+`createdAt 2026-10-09T03:31:58Z`, `mergedAt 2026-10-09T03:40:03Z`. `git log origin/main` ->
+`75ba9fad 2026-10-09T13:40:02+10:00` (Brisbane, = 03:40:02Z). The first merge script began with a
+full `status-sweep.ps1` run (~2 min on this box) before reaching `Assert-SmokedOrEscalate` and
+`Merge-Pr`, and **the enclosing tool call was cut at its 180 s cap before the script finished**. The
+`OPEN` read was issued in the window after that cap and before 03:40:03Z. It was correct when taken.
+
+### The real finding, and it is worth more than the one it replaces
+
+🔧 **A Desktop Commander tool-call timeout does NOT kill the PowerShell script it launched. The
+script keeps running on the host and completes its mutation after the station has stopped looking.**
+
+That is the whole mechanism: the merge of #2273 landed at 03:40:03Z from a script whose tool call
+had already returned an error to this station. Reading the board in that window returns a true
+pre-mutation state, and acting on it means **retrying a mutation that is still in flight** - which
+is exactly what this run did. Nothing was damaged, because a squash of an already-merged PR fails
+closed and the cwd fault made it fail anyway. The same shape on an arm, a label write or a branch
+update has no such backstop: `arm-prompt.ps1` leaves the lease held precisely so the gap between
+arm and heartbeat stays covered, and a station that re-arms into that gap is the LL-38 collision
+with itself.
+
+This is not DOCTRINE 1's "the command exited 0 but nothing happened". It is the inverse and it is
+not in §9 yet: **the command reported nothing and it happened anyway.** §3's *"silence is not
+death"* is the nearest relative, and it is about another agent, not about one's own orphaned child
+process.
+
+🔧 **Standing cures, both available now with no code change:**
+
+1. **Never put a long preamble in the same script as a mutation.** `status-sweep.ps1` alone costs
+   most of the 180 s budget. Re-measure in one call, mutate in the next - which is what this run
+   did for #2274, and it returned cleanly.
+2. **After a tool-call timeout, treat the mutation as UNKNOWN-IN-FLIGHT, not as not-done.** Wait,
+   then read the **content** on `origin/main`. Never retry the mutation on the strength of a board
+   read taken in the timeout window.
+
+**DISPOSITION: ACTIONED** - F21's two branches are measured and closed, its `[CANNOT MEASURE]` is
+retracted, and both cures are calling conventions this station can follow without touching
+`scripts/**`. **F21's DEFERRED disposition is withdrawn**: there is nothing to defer, because there
+was no defect in `Merge-Pr`, and therefore no reason to want a change to `pipeline-lib.ps1` for it.
+The never-list collision F21 invoked does not arise.
+
+⚠️ **Falsifying probe for the next run:** launch a script that sleeps past 180 s and then writes a
+file, through one Desktop Commander call. If the file is absent after the call errors, the child is
+being killed and this correction is wrong. If it appears, orphaned continuation is confirmed and
+cure 2 is mandatory.
+
+### Correction to the previous correction's own accounting
+
+It said this run merged one PR. It merged **two**, both docs-only, both inside this station's
+`docs/` lane, both through `Assert-SmokedOrEscalate` -> `Merge-Pr`: **#2273** at 03:40:03Z and
+**#2274** at 03:45:47Z. `origin/main` is **71d063e8**; the dev tree was fast-forwarded to it with
+`left-right 0 0`. **#2261 was still not merged and no label was touched** - that line has not
+changed and does not change.

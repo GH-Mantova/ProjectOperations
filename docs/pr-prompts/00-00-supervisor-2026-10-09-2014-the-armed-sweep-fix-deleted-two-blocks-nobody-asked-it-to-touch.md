@@ -420,6 +420,74 @@ occurrence 2026-10-10T00:10Z) if it judges them source-of-truth, else to 06 as a
    superseded copy; the retiring move belongs in Station 00's board PR instead. That is the whole
    of F2's cause, and it is one sentence.
 
+### F8 - The dev tree's fast-forward is blocked by a file whose on-disk bytes are already identical to `origin/main`, and BOTH of the station doc's prescribed cures fail their own read-back on it
+
+🔴 **Verification exhausted after two honest attempts. Reporting plainly rather than looping
+(DOCTRINE 5.6).** Added after #2295 merged, which is why it arrives in a follow-up PR rather
+than the original.
+
+**State the next run inherits.** [MEASURED] `C:\ProjectOperations2` is at `6332dd05`,
+`origin/main` is at `65956ff4` (my own #2295), `git rev-list --left-right --count
+HEAD...origin/main` -> `0 1`, index clean (`git diff --cached --name-status` EMPTY), and exactly
+one tracked worktree change: `M docs/pr-prompts/.arming-log.txt`. `git merge --ff-only
+origin/main` refuses both times with *"Your local changes to the following files would be
+overwritten by merge"*.
+
+⚠️ **Nothing is at risk, and that is the strange part.** The bytes on disk are byte-for-byte
+**identical to `origin/main`'s committed blob** - verified in node,
+`DISK_BYTES=26829 MAIN_BYTES=26829 IDENTICAL=true`. The content git refuses to overwrite is the
+content it would write. The audit line is present both on disk and on `main`
+(`AUDIT_LINE_PRESENT_ON_DISK=true`, `AUDIT_LINE_PRESENT_ON_MAIN=true`), so the arming record is
+safe either way.
+
+**Why the prescribed cure cannot verify itself on this file.** The station doc's POST-MERGE-FF-CURE
+says raw-Buffer write from `HEAD` first, EOL branches as fallbacks, and read back the blob. On
+this path all three readings disagree with each other:
+
+| probe | value |
+|---|---|
+| `git rev-parse HEAD:<path>` | `616132da` |
+| `git hash-object <path>` (clean filter) after raw-Buffer write | `75c31335` |
+| `git hash-object --no-filters <path>` | `9e0e907a` |
+| `git rev-parse origin/main:<path>` | `34df0f50` |
+
+The raw-Buffer write produced `BYTES_IDENTICAL=true` against `HEAD`'s blob and **still**
+`BLOB_MATCH=false`, because `git check-attr` reports `text: auto, eol: unspecified` and the
+stored blob is **mixed-EOL** - mostly CRLF with four lone LFs. `git diff` names exactly those
+four lines (`4 4` in `--numstat`). So the clean filter can never reproduce the stored blob, and
+**the blob read-back the cure depends on is the wrong instrument for a mixed-EOL file.** The
+right one is `git diff --numstat -- <path>` being EMPTY, and on this file it is not empty for
+any content I can write.
+
+⚠️ **My CRLF fallback made it worse before it made it no better.** Converting the four lone LFs
+produced a file differing from `HEAD` by those same four lines - the exact corruption the station
+doc warns about when it says reaching for an EOL conversion CORRUPTS a mixed-EOL blob. I reverted
+it. **Measured, not theorised: do not run the EOL fallback on this file.**
+
+⚠️ **One side effect I caused and then cleared, recorded because the dev tree's index is shared.**
+After those writes the path read `MM` - staged *and* modified - with the index holding
+`9e0e907a`. I cleared it with the path-scoped `git reset -q HEAD -- <that one file>`, which
+touches the index only and cannot resurrect or delete anything (it is not `reset --hard`,
+`checkout .`, `stash pop` or `clean`). Read back: `INDEX_BLOB_AFTER` == `HEAD_BLOB` ==
+`616132da`, `git diff --cached --name-status` EMPTY. The working copy was left at
+`origin/main`'s content deliberately, because that is both what the dev tree held when this run
+started and what is now committed.
+
+🔧 **What would actually clear it,** and why I did not do it: committing the file is pointless
+(its content is already on `main`), and the only remaining moves are the ones DOCTRINE 9.2
+forbids outright. The cheap real fix is upstream of all of this - **`.arming-log.txt` should
+carry an explicit `eol` in `.gitattributes`**, or `arm-prompt.ps1` should append with the EOL the
+file already uses, so the blob stops being mixed. Either makes the cure's read-back sound again
+for every future run.
+
+**ESCALATED / DISPATCHED** - the one-line `.gitattributes` entry is a code change in a tracked
+gate area, so it is **DISPATCHED to 05 SoT-keeper or 06 PR Master** to stage; the *decision*
+between pinning `.gitattributes` and changing `arm-prompt.ps1`'s append (which is on the
+instrument lane's NEVER-LIST) is **Marco's** and is in FOR MARCO. Meanwhile the next run should
+expect `0 1` and one modified file in the dev tree and **not** treat it as damage - the FF will
+go through on its own the moment any PR commits a change to that path, which the next arm will
+do.
+
 ## WHAT I DID NOT DO
 
 - **Did not merge anything.** The one open PR is red on a required check (CP-26) and
@@ -495,6 +563,24 @@ in-lane and merged it myself; I did not, because that is reasoning past the gate
    INSTRUMENT_LANE_V1. **Fails the future half** - the prompt-authoring trap stays live for the
    next instrument fix - and it is the gate-clearing move I refused above. Listed only so the
    option set is honest.
+
+**A second, smaller decision (F8).** `docs/pr-prompts/.arming-log.txt` is stored as a **mixed-EOL**
+blob - mostly CRLF with four lone LFs - under `text: auto` with no `eol` attribute. The effect is
+that the dev tree's fast-forward is now blocked by a file whose on-disk bytes are *already
+identical to `main`*, and that the station doc's own FF cure cannot verify itself on that path
+(three different hashes, none matching the stored blob). Nothing is at risk and the arming record
+is safe on `main`, but it will keep recurring after every arm.
+
+- ✅ **Pin the file's line endings in `.gitattributes`** (one line, e.g.
+  `docs/pr-prompts/.arming-log.txt text eol=lf`). Complete and additive: it fixes every future
+  arm and every future FF read-back, changes no behaviour, and touches nothing on the instrument
+  lane's NEVER-LIST. A station can stage it as an ordinary docs/gate change on your word.
+- ⚠️ Change `arm-prompt.ps1` to append using the EOL the file already uses. Also fixes the
+  future, but `arm-prompt.ps1` is on the NEVER-LIST so it needs you anyway, and it leaves the
+  existing mixed blob mixed - so it **fails the "immediately" half** until the file is rewritten
+  once.
+- ❌ Leave it. Every arm re-blocks the FF and the next run burns the same measurements I just
+  burned. Listed for completeness.
 
 Also still open from earlier cycles and unchanged by this run: the 33 non-main worktrees are
 dispatched to 03 tonight, and `arm-prompt.ps1`'s audit message still names

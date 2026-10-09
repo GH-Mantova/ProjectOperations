@@ -326,3 +326,145 @@ Two things are accumulating rather than breaking, both already on your list and 
    issued nothing in weeks (`needs-marco/five-holds-wait-on-an-approval-channel-that-has-issued-nothing-in-21-days-2026-09-23.md`).
    The board being empty is not the pipeline idling; it is the pipeline having nothing it is
    permitted to start.
+
+---
+
+# POST-MERGE VERIFICATION — appended after #2289 merged
+
+Appended to this same file rather than written as a second breadcrumb: DOCTRINE §10.5, an artifact
+carries ONE identity for its whole life.
+
+## The merge, confirmed individually
+
+[MEASURED] `gh pr view 2289 --json number,state,mergedAt,mergeCommit` — asked for this PR alone,
+never read off a LIST response's `merged` field (DOCTRINE §9.4):
+
+```json
+{"mergeCommit":{"oid":"161e5148dbcad63e30163c42863a2cf1c0b2f4b3"},"mergedAt":"2026-10-09T16:24:47Z","number":2289,"state":"MERGED"}
+```
+
+`MERGED`, not `QUEUED` — so UPDATE_AT_MERGE_TIME_V1's "confirm next run" does not apply and there
+is nothing for my successor to re-check. All required checks passed on the merged head
+`27674259`: `Approval receipt (CP-26)` pass, `PR gates — diff checks` pass,
+`Pipeline — watcher + linter tests` pass, `Pipeline — arm-prompt tests (Windows)` pass,
+`E2E restoration markers` pass, `CodeQL` / `Analyze (actions)` / `Analyze (javascript-typescript)`
+pass; the app jobs `skipping` on a docs-only diff.
+
+`Assert-SmokedOrEscalate -PR 2289` returned **True**, and on its first call — before CI finished —
+it correctly **threw** rather than passing:
+
+```
+Assert-SmokeGreen: #2289 check 'Pipeline — watcher + linter tests' is 'IN_PROGRESS' - still in
+flight. WAIT. Do not rebase, do not merge, do not 'retrigger'.
+```
+
+[INFERRED] That is a positive AND a negative control on the gate in one run: it refused an
+in-flight board and passed a green one. I waited; I did not rebase or retrigger.
+
+`Merge-Pr -PR 2289 -Actor 'station-00.scheduled'` returned `State MERGED, PR 2289`. The actor
+string was the SAME one given to `Enter-BoardLease`, so the generated-`pwsh-<pid>` self-refusal
+trap did not fire.
+
+## Classification, for the record
+
+[MEASURED] `labels=[] count=0`; three files, all under `docs/pr-prompts/`. Second-lane under
+DOCTRINE §10.1 step 3 (no watcher opened it, so it carries no RULE-2 verdict and that absence was
+not read as clearance), hand-classified against §5's hard stops: none apply. It is Station 00
+acting inside its own recorded `docs/` + queue lane, which STATION-CAPABILITIES §5 is the
+classifier for. Docs-only, so CP-26 needed no receipt and the check passed on its own.
+
+## The fast-forward — all four read-backs pass
+
+[MEASURED] `git merge --ff-only origin/main`, exit 0, `Updating 89181ae6..161e5148`. No path
+blocked it: this run's breadcrumb was written in the PR worktree, never in the dev tree, which is
+Cure 1 of the station contract's fast-forward rule and the reason the cure's unreliable primary
+branch (F69, #2288) was never reached.
+
+```
+1) git rev-list --left-right --count HEAD...origin/main   -> 0   0
+2) git diff --numstat                                     -> EMPTY
+3) git diff --cached --name-status                         -> EMPTY
+4) git status --porcelain --untracked-files=no             -> EMPTY
+```
+
+The fourth is the one that catches a dirty tree, and it is empty.
+
+[MEASURED] All three paths are now TRACKED on `main` (`git ls-files` returned each one), so this
+breadcrumb is no longer the UNTRACKED file `check-breadcrumb.mjs` warned it was, and the two
+archived predecessors reach `--freshness` by basename as the contract says.
+
+[MEASURED] Worktree torn down: `git worktree remove C:\po-wt\brd-1614` exit 0,
+`Test-Path C:\po-wt\brd-1614` → `False`, then `git worktree prune`. It is not left to join the 33
+in F73.
+
+## F75 — S4 — `Exit-BoardLease` returns `False` for both "not yours to release" and "the release failed", and only a re-take probe separates them
+
+[MEASURED] After `Merge-Pr` returned MERGED, `Exit-BoardLease -Actor 'station-00.scheduled'`
+returned **`False`** — and returned `False` again on a second attempt run from inside
+`C:\ProjectOperations2` with the library freshly dot-sourced. Nothing threw, nothing warned, and
+there is no message: the whole reading is one boolean.
+
+`False` from a release call reads as *"the lease is still held and I could not let it go"*, which
+would mean I had wedged the board for every station until the 30-minute expiry. **It did not mean
+that.** The controls:
+
+- POSITIVE control that the lease is FREE: `Enter-BoardLease -Actor 'station-00.scheduled.leaseprobe'`
+  returned **`True`**. A held lease refuses a different actor; this one did not.
+- POSITIVE control that `Exit-BoardLease` CAN return `True` at all — i.e. that the `False` above was
+  a real answer and not a broken function: `Exit-BoardLease -Actor 'station-00.scheduled.leaseprobe'`
+  returned **`True`**, immediately undoing the probe take.
+- [MEASURED] The library exports exactly `Enter-BoardLease`, `Exit-BoardLease`, `Get-BoardLease`,
+  `Get-BoardLeasePath`, `Write-BoardLease` — so `Exit-BoardLease` is the right name and
+  `Get-BoardLease` is the reading I should have taken first.
+
+[INFERRED] The lease was already gone when I tried to release it — released by `Merge-Pr` as part
+of landing the mutation — so `False` meant *"not yours, nothing to release"*. The board was free
+the whole time.
+
+This is DOCTRINE §7's exact shape: a well-formed, confident, WRONG-looking negative from a working
+system, with no empty result for §9.6 to fire on. It sits beside the already-recorded lease trap
+from #2286 (*the lease return value is the reading, not `$LASTEXITCODE`*) — same function family,
+opposite half: that one was about reading the TAKE, this one is about reading the RELEASE. A
+successor that takes `False` at face value writes "I may have left the board leased" into a report,
+or worse, goes looking for a lease to break.
+
+🔧 **The rule, not the state: never read a release's boolean on its own. Call `Get-BoardLease`
+before and after, or re-take under a throwaway actor and release it, and quote whichever you used.**
+
+⚠️ **Falsifying probe:** hold the lease under actor A, call `Exit-BoardLease -Actor A` once with no
+merge in between, and read the return. If it returns `True`, then `Merge-Pr` is not what releases it
+and the inference above is wrong — in which case the `False` seen here has another cause and must be
+re-measured.
+
+RULE 1 options, complete-and-additive first:
+
+1. **Make `Exit-BoardLease` return a reason alongside the boolean** (`NOT_HELD` / `NOT_YOURS` /
+   `RELEASED` / `WRITE_FAILED`) **and** have `Merge-Pr` state in its own return whether it released
+   the lease. Complete: both halves of the ambiguity are closed at the source, for every future
+   caller. Additive: the boolean keeps working for anything that reads it as one, no state file
+   changes shape, no caller breaks. **Fails neither half.**
+2. Document the ambiguity in DOCTRINE §9 and leave the function as it is. Additive, but fails the
+   *completely (immediately and future)* half — it is the "remembered, not mechanical" pattern that
+   §9.2 records as having failed seven times.
+3. Have `Exit-BoardLease` throw on `False`. Fails the *without damaging* half: a station releasing a
+   lease it never held is the normal post-`Merge-Pr` case, and throwing on it would abort teardown
+   after a successful merge.
+
+`scripts/pipeline/pipeline-lib.ps1` is the **first entry on the instrument-lane NEVER-LIST**, so
+this is not mine to change and merge, and a prompt targeting only that file would reach green and be
+un-mergeable by any station (NEVER_LIST_BEFORE_ARMING_V1, #2261).
+
+**DISPOSITION: DISPATCHED** — to **Station 06 (staging)**, by naming it here, with option 1 and the
+measurements above, and with the NEVER-LIST warning attached so 06 scopes the prompt to need Marco's
+release rather than discovering it at 13/15 green. This is the **fifth** item now queued for a
+station with no cadence; see F67 and FOR MARCO above. The board itself is **not** blocked — the
+lease is free, measured two ways.
+
+## Correction to this run's own WHAT I DID NOT DO
+
+That section says I merged nothing but this board PR, which is accurate. It should also have said:
+I took and immediately released a board lease under the throwaway actor
+`station-00.scheduled.leaseprobe` as the positive control for F75. Both calls were read back
+(`True` / `True`), the probe held the lease for under a second, and no board state was mutated by
+it. Recording it because an unexplained second actor in the lease history is exactly what my 14:30Z
+predecessor had to chase.

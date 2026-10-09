@@ -152,3 +152,88 @@ verdicts already tracked. That means a grace path is needed, which is question 3
 - **ACTIONED** — measured with POS and NEG controls on every probe, and checked that
   `verdict-anchor.test.mjs` does **not** already cover this despite its name.
 - **DEFERRED** — the audit of 107 existing verdicts, pending Marco's answer to question 3.
+
+---
+
+## ADDENDUM 2026-10-09T07:3xZ (Station 00, scheduled) - the anchor LANDED, and the CP-26 receipt commit is now what breaks it
+
+**Appended rather than filed separately** (DOCTRINE 10.5 - one artefact keeps one identity). This
+file's own header asks Marco *"whether to add the anchor, and whether a stale verdict should block
+or re-review"*. **Half of that is answered: the anchor exists.** Verdicts now carry a
+`REVIEWED-SHA` line and INSTRUMENT_LANE_V1 requires it to equal the current head. The SECOND half
+is now the live blocker, and it has a mechanism nobody had measured: **the commit the lane itself
+requires is what invalidates the anchor.**
+
+### MEASURED on PR #2278, 2026-10-09T07:2xZ
+
+| reading | value |
+|---|---|
+| `gh pr view 2278 --json headRefOid` | `cc4b8e90e0838eeea1a011daf651272fbdc08a95` |
+| `docs/pr-reviews/pr-2278-review.md` L1 | `VERDICT: MERGE` |
+| `docs/pr-reviews/pr-2278-review.md` L2 | `REVIEWED-SHA: 05650340cef2d843cad9556df6b9a36a7c681105` |
+| `git log --format='%h %s' origin/main..pr/2278/head` | `cc4b8e90 Merge branch 'main' into feat/heartbeat-alarm-text-v1` / `e987397f docs(decisions): CP-26 standing receipt for #2278 - instrument lane` / `05650340 feat(pipeline): quote the heartbeat alarm sentence in the sweep` |
+| `Approval receipt (CP-26)` check on the current head | **pass** |
+| labels | `[]` - never carried `do-not-merge` |
+| required checks on `cc4b8e90` | 14 pass / 0 fail / **1 pending** (`tendering-e2e`) |
+| `autoMergeRequest` | **empty - auto-merge is NOT armed** |
+
+**The reviewed commit is the FIRST of three.** The two commits above it are (a) the CP-26 standing
+receipt, which `standing-lanes.json` and the CP-26 gate both require before an instrument-lane PR
+may merge, and (b) a `Merge branch 'main'` that `Merge-Pr` performs itself under
+UPDATE_AT_MERGE_TIME_V1. **Neither touches the reviewed file.** `git diff --stat
+origin/main...pr/2278/head` is `docs/decisions/merge-approvals/2278.md | 18 +` and
+`scripts/pipeline/status-sweep.ps1 | 37 +-`.
+
+### Why this is a loop and not one PR's bad luck
+
+INSTRUMENT_LANE_V1 condition 4 (`REVIEWED-SHA` equals current head) and CP-26 (a receipt commit
+must exist on the branch) **cannot both be satisfied by the same head** unless the review is run
+after the receipt is committed. The same applies to the `sot` standing lane. So every future
+instrument-lane and sot-lane merge arrives at exactly this state: green, unlabelled, receipted,
+and holding a verdict for the commit before the receipt. A headless station reading the station
+doc literally must then leave it for Marco - which is what this run did - so **the lane Marco
+opened on 2026-10-03 to remove himself from instrument fixes currently routes every one of them
+back to him.**
+
+### RULE 1 options, complete-and-additive FIRST
+
+**(a) Make the verdict anchor commit-content-aware rather than SHA-equal: a verdict stays fresh
+while the only commits above `REVIEWED-SHA` are (i) the PR's own CP-26 receipt under
+`docs/decisions/merge-approvals/` and (ii) a merge of `main` that introduces no diff outside the
+reviewed paths - both verifiable mechanically with `git diff --numstat <REVIEWED-SHA>..<head>`.**
+Solves it immediately AND permanently, adds a CI-checkable rule, and damages nothing: a real code
+push above the reviewed SHA still invalidates the verdict, which is the protection the anchor
+exists for. Passes both halves.
+
+**(b) Re-review after the receipt** - have the watcher write `rev-<N>-ready.md` once the receipt
+lands, so the verdict is always for the final head. Solves it immediately; **fails the future half
+in cost rather than in safety** - it doubles a review cycle on every instrument and sot PR forever,
+and `index.mjs`'s existing stale-verdict re-review path (`:2838`) only fires while the watcher is
+still inside `waitForPolicyMerge`, which it was not for #2278.
+
+**(c) Drop condition 4 for the two standing lanes** - cheapest, and **fails the no-damage half
+outright**: it is the only thing stopping a station merging a head no reviewer looked at, which is
+precisely what this file was opened about.
+
+### What Station 00 did and did not do on #2278 this cycle
+
+**Did not merge it, did not arm auto-merge, did not re-label it, wrote no receipt** (one already
+exists, authored by the supervised interactive lane at `2026-10-09T06:45:38Z`, `authority:
+standing`, `lane: instrument`). Two independent blockers, either sufficient: `tendering-e2e` is
+**pending** on the current head and pending is not pass (DOCTRINE 2), and condition 4 fails as
+measured above.
+
+⚠️ **One instrument lie caught inside this measurement, recorded because it points the wrong way.**
+`node scripts/pipeline/check-instrument-lane.mjs --range origin/main...pr/2278/head` returned
+`INSTRUMENT_LANE: OUT_OF_LANE`, offending path `docs/decisions/merge-approvals/2278.md` - exit 0,
+controls both passing, a well-formed verdict. It is **not** the lane verdict the station doc means.
+`standing-lanes.json`'s own `_readme` defines the instrument lane as *"every diff path **apart from
+the receipt itself** is in instrument-lane.json"*, and the gate that encodes that exclusion is the
+required check `Approval receipt (CP-26)`, which **passed**. A station that quoted the bare
+`--range` call would refuse a merge the gate allows. **Anyone acting on this file must read the
+CP-26 check, not a hand-run `--range`.**
+
+⚠️ **Falsifying probe for the whole addendum:** on any instrument-lane or sot-lane PR, compare
+`gh pr view <N> --json headRefOid` against L2 of `docs/pr-reviews/pr-<N>-review.md`. If they are
+ever equal while a CP-26 receipt commit exists on the branch, the loop described here does not hold
+and this addendum must be re-measured.

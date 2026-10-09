@@ -88,6 +88,7 @@ NOT A STATION.** [MEASURED] 2026-09-07T06:1xZ by Station 04 from the scheduled-t
 enabled tasks — `00-supervisor`, `03-machine-minder`, `04-scanner`, `05-sot-keeper` and
 **`weekly-security-audit`** (`30 7 * * 1`, lastRun `2026-09-06T21:32:44Z`, bootstrap mtime
 `2026-08-17T06:37:17Z`) — while `C:\Users\Marco\Claude\Scheduled\` holds **11** `SKILL.md` files.
+
 Every "the five bootstraps" probe this pipeline runs therefore covers **5 of 11 files and 4 of 5
 live tasks**, including the open escalation
 `docs/pr-prompts/needs-marco/gitignore-citations-in-the-five-bootstraps-2026-09-06.md`.
@@ -98,6 +99,32 @@ live tasks**, including the open escalation
 than fixing. The defect is the **map**, exactly as this section's own rule predicts: a sweep whose
 corpus is defined by a COUNT rather than by the live task list will keep missing it, and the count
 is already wrong.
+
+🔴 **AND THAT COUNT HAS NOW ROTTED FOR THE THIRD TIME, SO IT IS REPLACED BY THE RULE RATHER THAN BY A
+FOURTH NUMBER.** `BOOTSTRAP_CORPUS_IS_THE_MCP_PATH_V1` [MEASURED] 2026-10-09T18:1xZ by Station 04
+(breadcrumb `00-04-scanner-2026-10-09-1810-...`, F3), recursively over
+`C:\Users\Marco\Claude\Scheduled`: **26** `SKILL.md` files, not 11 — **6 live** at depth 1 (the five
+station bootstraps, all `mtimeUtc=2026-10-06T05:59:29Z`, `BOOTSTRAP_CORE_REFERENCE_V1` hits=1 each,
+plus `weekly-security-audit` at `2026-08-17`, hits=0 and `enabled: false`), **15** in the dated
+backup folders `_backup-2026-10-02\`, `_backup-2026-10-03\` and `_backup-2026-10-06\` (five stations
+each, hits=0 every one), and **5** in `_retired-2026-08-18\` (the pre-station tasks, hits=0).
+
+⚠️ **The backups are NOT a defect and must not be inflated into one.** Three dated folders plus a
+dated `_retired-` folder are an orderly history of Marco's own layer, they sit outside the repo, and
+nothing suggests deleting them. **The defect is entirely in how a probe's corpus is defined.**
+
+🔧 **So: never walk the `Scheduled` root. Enumerate the ENABLED tasks in the scheduled-tasks MCP and
+use the `path` each one reports — the MCP hands you that path directly, and it is the unambiguous
+selector.** Run literally as *"over every `SKILL.md`"*, section 3's `BOOTSTRAP_CORE_REFERENCE_V1`
+probe today returns **20 zero-hit files against 5 hits**, so a reader reporting the zeroes would
+confirm a clause section 3 explicitly RETIRED on 2026-10-07 — which is this section's own opening
+thesis, that a stale instruction reads exactly like a current one. [MEASURED] the scoped probe is
+clean: the MCP's four enabled `path` values -> 4 files, `BOOTSTRAP_CORE_REFERENCE_V1` hits=1 each.
+⚠️ **Falsifying probe: the enabled-task count from the MCP against the number of `SKILL.md` files a
+recursive sweep of that root opens.** Today: **4** against **26**. The figures in this paragraph are
+dated EVIDENCE for the rule, not a count to quote — **instructions live here, state does not**, and a
+fourth count would simply be the fourth to rot. Found by Station 04 2026-10-09T18:1xZ (F3), landed by
+Station 00 at 18:3xZ.
 
 🔧 **So express every bootstrap sweep's corpus as "every `SKILL.md` behind an ENABLED task in the
 scheduled-tasks MCP", never as "the five".** The MCP is already the prescribed source for cadence
@@ -368,7 +395,33 @@ is the one that stops an agent merging Marco's work.
 [MEASURED] 2026-09-05, through `-Command`: `gh pr view 1369 --json labels --jq '.labels[].name'`
 printed `do-not-merge` — POSITIVE control, #1369 genuinely carries that label. The same query
 against #1640, which genuinely has none, printed nothing — also correct. Escaped double quotes
-fail **LOUDLY** (`unknown arguments`), never silently. The correction has been on `origin/main` in
+fail **LOUDLY** (`unknown arguments`), never silently.
+
+🔴 **NARROWED 2026-10-09 — that last sentence is a positive claim about observable behaviour, and it
+did NOT reproduce.** `JQ_LOUD_FAILURE_NOT_REPRODUCED_V1` [MEASURED] 2026-10-09T18:1xZ by Station 04
+(breadcrumb `00-04-scanner-2026-10-09-1810-...`, F1), through a `-Command` layer with the escaping
+confirmed to survive into `gh`'s argv (`inner_sent=gh pr view 1369 ... --jq \".labels[].name\"`):
+**exit 0**, output `do-not-merge` — the CORRECT answer, neither a loud failure nor a silent wrong
+reading. POSITIVE control, the single-quoted form through the same layer: exit 0, `do-not-merge`.
+POSITIVE control on the reading itself, from a `.ps1`: `#1369` -> `do-not-merge` (which it genuinely
+carries), `#1640` -> empty (which is genuinely correct). Measured at PS `5.1.26100.9444`.
+
+🔧 **So read the sentence as: escaped double quotes were NOT observed to fail at all on this box —
+the raw `--json` + `ConvertFrom-Json` cure stands as a PRECAUTION, not as the cure for an observed
+failure.** DOCTRINE section 9.4's bullet is already worded as a precaution and needs no change,
+which keeps this fix out of the hash-gated canonical block. ⚠️ **Note the asymmetry before acting on
+it: one non-reproduction does not prove it never fails** — `gh` version, PowerShell version and
+escaping depth all differ between callers, and 04 measured one combination. The reason this is
+narrowed rather than deleted is the history two paragraphs down: this sentence REPLACED an earlier
+bullet whose polarity taught readers to distrust a *correct* `do-not-merge` reading, and
+`do-not-merge` is the gate that stops an agent merging Marco's work. A reader who tests the
+replacement, finds it also wrong, and discards both is left trusting nothing about the gate.
+⚠️ **Falsifying probe:** `gh pr view 1369 --repo GH-Mantova/ProjectOperations --json labels --jq
+\".labels[].name\"` through a `-Command` layer. If it ever prints `unknown arguments`, the original
+sentence is right again and this narrowing must be re-measured. Found by Station 04
+2026-10-09T18:1xZ (F1), landed by Station 00 at 18:3xZ.
+
+The correction has been on `origin/main` in
 DOCTRINE §9.4 since 2026-08-26 and was never applied here: it is the third paraphrase in this
 file to drift away from §9, which is why the rule above is now scoped to all of them.
 

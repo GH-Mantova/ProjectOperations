@@ -453,3 +453,134 @@ opened six days ago to save yourself this exact traffic.
 
 And one thing you have already answered without being asked: **#2261 merged at 06:26:23Z**, so its
 escalation is discharged this run (F34).
+
+---
+
+## CORRECTION 2026-10-09T07:5xZ - written after #2279 merged, because three claims above expired the moment it did
+
+The sections above were written before this run's own board PR existed. #2279 merged at
+**07:34:15Z** (`mergeCommit cc96f917`, asked individually), and three things changed in the eleven
+minutes after it. **F36's disposition above is WRONG as it stands**, and the two findings that
+replace it are instrument findings that will otherwise cost the next run the same three attempts
+they cost this one.
+
+### F36 is ACTIONED, not DISPATCHED - the fast-forward was taken this run
+
+F36 reads *"DISPOSITION: DISPATCHED to the next Station 00 cycle"*, written on the premise that the
+fix could not be applied while this run's own PR was unmerged. Once #2279 merged that premise was
+gone, so the ff was taken here instead.
+
+[MEASURED] all four readings on `C:\ProjectOperations2` after
+`git merge --ff-only origin/main` -> **exit 0**, `Fast-forward`, 13 files:
+
+```
+git rev-list --left-right --count HEAD...origin/main  -> 0  0
+git diff --numstat                                    -> EMPTY
+git diff --cached --name-status                       -> EMPTY
+git status --porcelain --untracked-files=no           -> EMPTY
+dev HEAD = origin/main = cc96f917
+```
+
+Read back on the fast-forwarded tree: `node scripts/pipeline/next-sweep.mjs` ->
+**`SWEEP: instruction-drift`**, `(rotation position 4 of 4; previous run: 2026-10-09T06:09:53Z)`,
+exit 0 - so 04's advance survived and the next scanner run does **not** repeat `repo-hygiene`.
+`check-breadcrumb.mjs --freshness` -> `CLEAN`, exit 0, `structure: 1 checked, 0 malformed`.
+The two untracked root duplicates of the 0613 and 0610 breadcrumbs were removed **only after** a
+byte-comparison (CRLF-normalised) proved each identical to the copy now tracked at
+`docs/pr-prompts/archive/`; nothing was deleted on a guess and `git clean` was never used.
+
+**DISPOSITION: ACTIONED** - superseding F36's DISPATCHED. The dev tree is level and clean.
+
+### F37 - the station contract's own fast-forward cure, applied literally, DOES NOT WORK: `git show` emits LF, the worktree needs CRLF, and the failure hides behind the documented PASS reading
+
+The contract says to restore each blocking path *"byte-exactly from `HEAD` with a raw-Buffer node
+write - `fs.writeFileSync(abs, execFileSync('git', ['show', 'HEAD:' + rel]))` - then `git
+update-index --refresh`; exit 0 means fast-forward now."* **That is what I ran, and it left the
+files dirty and the ff still refused.**
+
+[MEASURED], in order, on `docs/pipeline/sweep-rotation.json`:
+
+| attempt | what was written | `update-index --refresh` | `git diff --numstat` | `git status --porcelain` | `merge --ff-only` |
+|---|---|---|---|---|---|
+| 1 - the cure verbatim | HEAD blob raw: `bytes=3011 crlf=0 loneLF=28` | **exit 1**, `needs update` | EMPTY | ` M` | **refused** |
+| 2 - a string-level CRLF conversion I did not read back | unchanged, still `crlf=0` | **exit 1** | EMPTY | ` M` | **refused** |
+| 3 - byte-level LF->CRLF, **read back before acting** | `bytes=3039 crlf=28 loneLF=0` | **exit 0** | EMPTY | **EMPTY** | **exit 0, Fast-forward** |
+
+`git check-attr -a -- docs/pipeline/sweep-rotation.json` -> **`text: auto`**. So the worktree form
+of this file is CRLF, `git show <ref>:<path>` hands you the LF blob, and a raw-Buffer write of it
+produces a file that is *correct in content and wrong in line endings*. **The trap is what the
+instruments then say:** `git diff --numstat` reads **EMPTY** through all three attempts - the clean
+filter normalises the endings away, so the content comparison is genuinely equal - while
+`git status --porcelain` and the merge's own safety check, which read the index stat, both say
+modified. **`--numstat` EMPTY is the reading the contract calls a PASS, and it was EMPTY on both
+failures.** This is the ff-blocker trap one layer deeper than the one the contract documents, and
+it is DOCTRINE 9.6's shape exactly: nothing is empty, nothing warns, and the well-formed answer was
+never measuring what I needed.
+
+Attempt 2 is also an instrument lie of my own and is recorded rather than dropped: I converted to
+CRLF and **did not read the result back**, so I ran the ff believing a write that had not happened.
+Attempt 3 differs from attempt 2 only in that the read-back came first - `crlf=28 loneLF=0` printed
+before the merge was attempted. That is DOCTRINE 1 doing its job.
+
+**DISPOSITION: ACTIONED** - the cure works with the endings fixed, and the fix is one line: convert
+LF to CRLF byte-by-byte before writing, then prove it with a read-back that counts CRLF pairs.
+Copy-paste form, which is what the next run will actually want:
+
+```js
+const head = execFileSync('git', ['-C', repo, 'show', 'HEAD:' + rel], { maxBuffer: 1e8 });
+const out = []; for (let i = 0; i < head.length; i++) { const b = head[i];
+  if (b === 0x0A && (i === 0 || head[i-1] !== 0x0D)) out.push(0x0D); out.push(b); }
+fs.writeFileSync(abs, Buffer.from(out));
+// then READ BACK and require crlf > 0 && loneLF === 0 BEFORE attempting the ff
+```
+
+Whether the station-doc REFERENCE's four-step cure should carry this is a docs change in Station
+00's own lane and is **DISPATCHED to the next cycle** as the cheapest item on its board - it is two
+sentences and a code block in `00-supervisor-REFERENCE.md`'s *AFTER YOUR BOARD PR MERGES* section,
+whose heading already says *"(incl. EOL rules)"* without stating the rule.
+⚠️ **Falsifying probe:** `git check-attr -a -- <path>` plus a CRLF count on the worktree file. If
+`text` is ever unset for the queue and `docs/` paths, a raw LF restore is correct and this finding
+does not apply.
+
+### F38 - `Merge-Pr` refuses against the lease the merging station itself is holding, because its default actor is a generated name
+
+[MEASURED] `Merge-Pr -PR 2279` with the board lease held by this run:
+
+```
+WARNING: Merge-Pr: -Actor not set and $env:PO_ACTOR empty; using 'pwsh-6924' for the board lease.
+[board-lease] REFUSED: station-00.scheduled holds the board (11 min ago, reason=collect:board-pr-2026-10-09-0725)
+Merge-Pr: #2279 refused -- another lane holds the board lease. Stand down; COLLECT only.
+```
+
+`Assert-SmokedOrEscalate -PR 2279` had already returned `True` / `True`. The refusal is
+BOARD_LEASE_V1 working correctly against a **wrong actor name**, not against a real second lane:
+the lease was mine, taken at 07:23:06Z for this PR. Re-run as
+`Merge-Pr -PR 2279 -Actor 'station-00.scheduled'` -> `{"State":"MERGED","PR":2279}`, read back
+individually as `state=MERGED mergedAt=2026-10-09T07:34:15Z`.
+
+**This fails loud, which is why it cost a minute rather than a run** - but its message names the
+holder as *"another lane"* when the holder is the caller, and the documented sequence
+(`Enter-BoardLease` ... `Assert-SmokedOrEscalate` then `Merge-Pr`) does not mention `-Actor` or
+`PO_ACTOR` anywhere. A station following the contract literally hits this on **every** merge it
+makes while correctly holding the lease.
+
+**DISPOSITION: DISPATCHED to the next Station 00 cycle** (docs half, its own lane): state in the
+station doc's BOARD DRIVING condition 3 that `Merge-Pr` and `arm-prompt.ps1` take the **same actor
+string** as `Enter-BoardLease`, passed with `-Actor` or `$env:PO_ACTOR`. RULE 1, complete-and-additive
+first: **(a)** have `Merge-Pr` default its actor to the holder when the current process already
+holds the lease, and keep the generated name only when the lease is free - fixes it immediately and
+permanently and weakens no gate, since a caller that does not hold the lease is still refused;
+**(b)** document the `-Actor` requirement only - immediate, but **fails the future half**, because
+the next station to follow the contract literally hits it again; **(c)** drop the lease check inside
+`Merge-Pr` - **fails the no-damage half outright** and removes condition 3, the load-bearing one.
+Also worth saying plainly: an agent that reads the refusal at face value concludes a second actor is
+on the board and stands down - **a false LL-38 reading, which is the expensive direction.**
+
+### One claim above that is now stale rather than wrong
+
+`#2261` - the FOR MARCO section records its receipt question as answered only "in fact, by merging".
+[MEASURED] on the fast-forwarded tree: `docs/decisions/merge-approvals/2261.md` **exists on main**
+with `approved_by: marco`, `approved_at: 2026-10-09T02:47:10Z`, `authority: personal`. So Marco took
+option (a) - the complete-and-additive one - before this run started, and the release word is now
+where a headless run can read it. **F34 stands as ACTIONED; the FOR MARCO wording understates what
+he had already done.**

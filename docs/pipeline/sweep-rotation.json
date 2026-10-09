@@ -1,7 +1,7 @@
 {
   "_why": "Station 04 covers ONE named sweep per run, completely, instead of every sweep shallowly. Without recorded state every fresh run picks the first entry, which narrows coverage without rotating it - gate liveness gets checked forever and instruction drift never does. This file is that state. Station 04 reads it, runs the sweep it names, then advances it via: node scripts/pipeline/next-sweep.mjs --advance",
-  "last_index": 1,
-  "last_run_utc": "2026-10-09T18:10:05Z",
+  "last_index": 2,
+  "last_run_utc": "2026-10-09T22:10:05Z",
   "last_station": "04-scanner",
   "sweeps": [
     {
@@ -17,7 +17,7 @@
     {
       "key": "repo-hygiene",
       "title": "Repo hygiene",
-      "brief": "Orphaned worktrees and their locks, stash growth in the watcher clone, superseded prompt files littering the queue root, tracked *-ready.md at depth 1 (the board trap), branches merged but not deleted, and HOLD files tracked on main whose work has already shipped. REPORT ONLY - stage a prompt for anything worth deleting. No agent bulk-deletes."
+      "brief": "Orphaned worktrees and their locks, stash growth in the watcher clone, superseded prompt files littering the queue root, tracked *-ready.md at depth 1 (the board trap), branches merged but not deleted, and HOLD files tracked on main whose work has already shipped. REPORT ONLY - stage a prompt for anything worth deleting. No agent bulk-deletes. SQUASH_AWARE_MERGED_BRANCH_PROBE_V1: for 'branches merged but not deleted', NEVER use 'git branch -r --merged origin/main'. Merge-Pr squash-merges (DOCTRINE section 8.3), so a merged branch is never an ancestor of main and --merged returns about zero forever while the branch count climbs. Cross the live remote-tracking refs against 'gh pr list --state merged --limit 400' instead, and name the PR number for each branch you report. [MEASURED] 2026-10-09T22:1xZ by Station 04: the squash-aware probe returned 36 of 52 live remote branches whose PR is MERGED, against 2 rows from --merged, one of which was the refs/remotes/origin/HEAD false positive - so the honest comparison is 36 against 1. Falsifying probe: run both forms in the same run and compare; if --merged ever returns the same set, this line must be re-measured."
     },
     {
       "key": "instruction-drift",

@@ -384,3 +384,90 @@ the board has exactly one item on it.
 - **I did not run `git` through the Linux device bridge** against any mount, although the guard
   reported itself INERT (exit 2) and the ban was therefore remembered rather than mechanical.
 - **I did not run `lint-station.mjs --write-canonical`.**
+
+---
+
+## CORRECTION 2026-10-09T05:3xZ - this run's board PR merged, the dev tree is fast-forwarded, the repaired prompt now ADMITs in the dev tree, and the arm was RE-EVALUATED AND STILL REFUSED - on a measurement, not on the sequencing argument above
+
+**true at** `origin/main` **4205aaec**. Added to this file rather than filed separately: DOCTRINE
+10.5, one artefact keeps one identity.
+
+### What landed after the report above was written
+
+[MEASURED] `Assert-SmokedOrEscalate -PR 2276` -> `True True`, `ASSERT_OK=True`. `Merge-Pr -PR 2276
+-Actor station-00.sched0515`, run with `Set-Location C:\ProjectOperations2` at the top of the script
+-> `MERGE_RETURNED_STATE = MERGED 2276`, **cleanly, no throw**. [MEASURED] `gh pr view 2276 --json
+number,state,mergedAt` -> `MERGED`, `2026-10-09T05:33:01Z`. `origin/main` is **4205aaec**.
+
+This is a **second independent confirmation of F21's cwd conclusion** (0314 breadcrumb, resolved in
+#2275): `Merge-Pr` called from inside the repository returns `MERGED` and does not throw. #2274 was
+the first. The defect was never in the primitive.
+
+[MEASURED] content read-back on `origin/main`, not the primitive's return value:
+`git grep -c "STANDING AUTHORITY to finish the work" origin/main -- docs/pr-prompts/pr-sweep-quote-the-heartbeat-alarm-HOLD.md`
+-> **1**; `git ls-tree -r --name-only origin/main -- docs/pr-prompts/archive` contains the 0314
+breadcrumb.
+
+[MEASURED] dev tree fast-forwarded `1bb2c482..4205aaec`, `FF_EXIT=0`, with **all four** readings the
+report contract demands: `git rev-list --left-right --count HEAD...origin/main` -> `0 0`;
+`git diff --numstat` EMPTY; `git diff --cached --name-status` EMPTY; `git status --porcelain
+--untracked-files=no` EMPTY.
+
+[MEASURED] `node scripts/pipeline/lint-prompt.mjs docs/pr-prompts/pr-sweep-quote-the-heartbeat-alarm-HOLD.md`
+in the **DEV TREE** -> `ADMIT (size 1)`, exit **0**.
+
+### So F23's stated reason for not arming was discharged, and the arm was re-opened
+
+F23 said the arm was deferred because the repaired body lived only on this run's branch. That is no
+longer true: it is on `main`, the dev tree holds it, and the dev-tree copy ADMITs. **The decision was
+therefore re-taken rather than inherited**, and the safe-to-act gate was re-measured immediately
+before the mutation, as the station doc requires because the verdict expires the moment it prints.
+
+[MEASURED], immediately before the intended `arm-prompt.ps1` call:
+
+```
+board lease               -> EMPTY (free; released by Merge-Pr's own finally, as it was at 0314)
+.git/index.lock dev       -> False
+.git/index.lock clone     -> False
+watcher heartbeat, last line:
+  [2026-10-09T05:32:57.789Z] rev-2276-ready.md elapsed=60s last:
+armed (*-ready.md) now    -> 1
+```
+
+**A watcher build IS in flight.** The heartbeat ticked at 05:32:57Z - seconds before the reading,
+and the tick only happens mid-run - and the job it names is `rev-2276-ready.md`, the auto-generated
+**review job** the watcher raised for the PR this run had just merged. `armed = 1` is that review
+job, not a prompt: DOCTRINE 9.5, `rev-<n>-ready.md` files are auto-generated review jobs with no YAML
+front matter by design, and they are not something a station arms or counts as queue work.
+
+The sweep's section-3 gate names the watcher build as the thing that **blocks arming and merging**.
+So the arm is refused, and this time on a live measurement rather than on a sequencing argument.
+Arming a prompt into a window where the watcher is mid-build on another job is the LL-38 collision
+the gate exists to prevent, and the lease had already been released, so condition 3 of BOARD DRIVING
+was not even held.
+
+**F23's disposition is UNCHANGED - ACTIONED, with no arm this run.** What changes is the reason
+recorded for the next run, and the next run should not re-derive it:
+
+**The arm is READY and nothing is blocking it but timing.** `pr-sweep-quote-the-heartbeat-alarm-HOLD.md`
+is tracked, lints ADMIT in the dev tree, its premise is alive on `origin/main`, its single scope file
+is `files[0]` of the instrument lane and on no NEVER-LIST, and `standing-lanes.json` carries the
+`instrument` key so the resulting PR has a standing-receipt form. MARCO_QUEUE_LINE_V1 at the end of
+this run: armed prompts **0** (the one `*-ready.md` present is `rev-2276`, a review job), WAITING ON
+MARCO **0**. **Next run: re-measure the heartbeat, confirm no build is in flight, take the lease,
+then `arm-prompt.ps1`.** Expect the review job for #2276 to have drained by then.
+
+**Falsifying probe before arming:** read the watcher heartbeat's last line and the `*-ready.md`
+census together. If the newest tick is less than ~2 minutes old, or any `*-ready.md` other than a
+`rev-<n>` review job is present, the gate is still closed and this correction's conclusion does not
+apply.
+
+### Correction to this report's own accounting
+
+WHAT CHANGED item 3 said "the board PR that carries all of the above". That PR is **#2276**, merged
+`2026-10-09T05:33:01Z`; `origin/main` is **4205aaec** and the dev tree is fast-forwarded to it and
+clean on all four readings. WHAT I DID NOT DO said no merge was made - that was true when written,
+before #2276 was green. **#2276 was merged** - this station's own docs-only board PR, inside its
+`docs/` lane, through `Assert-SmokedOrEscalate` -> `Merge-Pr`, with CP-26 PASSing because a docs-only
+diff arms no receipt requirement. **#2261 was still not merged and no label was touched.** Every
+other line of that section stands, including no arm.

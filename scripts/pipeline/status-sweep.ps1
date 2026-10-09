@@ -155,7 +155,7 @@ if ($ghOk) {
   if (-not $mainSha) {
     Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
   } else {
-    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName 2>$null | Out-String).Trim()
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName,databaseId,createdAt 2>$null | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
       # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
       # RAW string first, or an empty board reads as a single mystery run.
@@ -205,17 +205,50 @@ if ($ghOk) {
       if ($otherRuns.Count -gt 0) {
         $ofail = 0
         $onames = @{}
+        $otherNewestFail = @{}
         foreach ($r in $otherRuns) {
           $isBad = ($r.conclusion -and $r.conclusion -ne "success" -and $r.conclusion -ne "skipped")
           if ($isBad) { $ofail++ }
           $wfKey = [string]$r.workflowName
           if (-not $onames.ContainsKey($wfKey)) { $onames[$wfKey] = @(0, 0) }
           $onames[$wfKey][0] = $onames[$wfKey][0] + 1
-          if ($isBad) { $onames[$wfKey][1] = $onames[$wfKey][1] + 1 }
+          if ($isBad) {
+            $onames[$wfKey][1] = $onames[$wfKey][1] + 1
+            # Track newest failing run per workflow (ISO string compare is lexicographic = chronological).
+            $rCreated = [string]$r.createdAt
+            if (-not $otherNewestFail.ContainsKey($wfKey) -or $rCreated -gt $otherNewestFail[$wfKey].createdAt) {
+              $otherNewestFail[$wfKey] = @{ id = $r.databaseId; createdAt = $rCreated }
+            }
+          }
         }
         Line "LIVE" ("   NOT trunk CI on this commit, excluded from the verdict above: " + $otherRuns.Count + " run(s), " + $ofail + " failing")
         foreach ($wfKey in $onames.Keys) {
           Line "LIVE" ("      " + $wfKey + ": " + $onames[$wfKey][0] + " run(s), " + $onames[$wfKey][1] + " failing")
+          # HEARTBEAT_ALARM_TEXT_V1 -- when the Pipeline heartbeat workflow has failures, resolve the
+          # newest failing run and extract the alarm sentence from its log. ONE gh run view call per
+          # sweep run at most (guarded by the $onames[$wfKey][1] -gt 0 condition, and only for this
+          # workflow). A failed fetch must fail LOUD, never quiet -- DOCTRINE §7: "a tool that cannot
+          # run must FAIL LOUD, never fail quiet."
+          if ($wfKey -eq "Pipeline heartbeat" -and $onames[$wfKey][1] -gt 0) {
+            $hbRunId = $otherNewestFail[$wfKey].id
+            $hbLog = (gh run view $hbRunId --log-failed 2>$null | Out-String)
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($hbLog)) {
+              Line "LIVE" ("         [CANNOT MEASURE] gh run view " + $hbRunId + " --log-failed returned nothing")
+            } else {
+              $hbAlarm = $null
+              foreach ($hbLine in ($hbLog -split '\r?\n')) {
+                if ($hbLine -match '\[heartbeat\].*$') {
+                  $hbAlarm = $Matches[0].Trim()
+                  break
+                }
+              }
+              if ($hbAlarm) {
+                Line "LIVE" ("         alarm: " + $hbAlarm)
+              } else {
+                Line "LIVE" ("         [CANNOT MEASURE] no [heartbeat] line in gh run view " + $hbRunId + " --log-failed")
+              }
+            }
+          }
         }
       }
     }

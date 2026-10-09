@@ -323,3 +323,84 @@ go satisfied. Both are checked every run by the sweep and `--freshness`; neither
 - **I did not touch `/sot/`**, Azure, Entra or SharePoint, and wrote no production data.
 - **I did not run `git` through the Linux device bridge** against any mount, although the guard
   reported itself INERT (exit 2) and the ban was therefore remembered rather than mechanical.
+
+---
+
+## CORRECTION 2026-10-09T03:5xZ - F21: `Merge-Pr` merged #2273 and then threw `squash-merge failed (exit 1)`, and a read-back taken after the merge reported the PR OPEN
+
+**true at** `origin/main` **75ba9fad** - same run, written after the merge of #2273 landed. Added to
+this file rather than filed separately: DOCTRINE 10.5, one artefact keeps one identity, and the 0115
+breadcrumb's own correction (#2270) set the precedent for a finding that postdates its report.
+
+### F21 - the merge primitive reported failure for a merge that succeeded
+
+Sequence, all of it [MEASURED]:
+
+1. `Assert-SmokedOrEscalate -PR 2273` -> `True True`, `ASSERT_OK=True`.
+2. `Merge-Pr -PR 2273 -Actor station-00.sched0314` -> the enclosing tool call hit its 180 s cap
+   while the script was still running, so no return value was read.
+3. `gh pr view 2273 --json state,mergedAt,autoMergeRequest` (run from `C:\ProjectOperations2`)
+   -> `{"autoMergeRequest":null,"mergedAt":null,"number":2273,"state":"OPEN"}`.
+4. On that reading the merge was retried. `Merge-Pr` -> `MERGE_THREW: Merge-Pr: #2273 squash-merge
+   failed (exit 1).`
+5. `gh pr view 2273 --json number,state,mergedAt,mergeStateStatus` -> `state=MERGED`,
+   **`mergedAt=2026-10-09T03:40:03Z`**.
+
+So the merge landed at 03:40:03Z and **two instruments then disagreed with it**: a per-PR `gh pr
+view` reported `OPEN`/`mergedAt:null`, and `Merge-Pr` reported a failed squash. Content read-back on
+`origin/main` 75ba9fad confirms the merge was real and complete: rotation `last_index=1`, all three
+breadcrumbs under `docs/pr-prompts/archive/`, the #2261 escalation correction present, this
+breadcrumb present. The dev tree then fast-forwarded `6a0e7fca..75ba9fad` with all four readings
+clean (`left-right 0 0`, `--numstat` EMPTY, `--cached` EMPTY, tracked `status --porcelain` EMPTY).
+
+**This is DOCTRINE 1's table happening live** - *"`git commit` succeeded / the log looked clean"* -
+with the polarity reversed, which is the rarer and more expensive direction. A false FAILURE on a
+merge invites exactly what this run did next: retry a mutation that has already happened. Nothing
+was damaged here because a squash of an already-merged PR fails closed, but the same false negative
+on an arm or a branch update would not be harmless.
+
+**One confound is named rather than hidden.** At step 4 the script's working directory was
+`C:\po-sup-fix-scripts`, which is not a git repository; the same script printed `failed to run git:
+fatal: not a git repository` for its own inline `gh pr view`, and `gh` resolves the repo from the
+cwd. So the exit-1 squash at step 4 may be that cwd fault rather than a defect in `Merge-Pr`. **What
+the cwd cannot explain is step 3**, which ran from `C:\ProjectOperations2` and still returned
+`OPEN`/`null` for a PR already merged - either a stale GitHub read (DOCTRINE 9.4's family) or a
+clock-ordering I cannot pin, because the tool-call timeout means I do not have a timestamp for step 3
+precise enough to prove it followed 03:40:03Z.
+
+**[CANNOT MEASURE]** which of the two it was. Separating them needs a merge driven with a known cwd
+and a stamped read-back on each side, and this run had already merged.
+
+**DISPOSITION: DEFERRED** - real, reproducible-in-principle, and not fixable from here. `Merge-Pr`
+lives in `scripts/pipeline/pipeline-lib.ps1`, the **first entry on `instrument-lane.json`'s
+NEVER-LIST**, so a station cannot merge a change to it - which is the whole of F16's story and the
+reason #2261 is sitting on Marco's desk. Arming a prompt against that file would open a second
+PR nobody can merge. What would make this urgent: any run reporting a merge it cannot confirm, or a
+retry of a mutation on a false-negative reading.
+
+**Cure available to every station now, needing no code change:** after `Merge-Pr`, believe the
+**content read-back on `origin/main`**, not the primitive's return value and not a single `gh pr
+view` - and run it from inside the repo. `Merge-Pr`'s own docstring already says *"never report a
+merge you have not confirmed"*; this run shows the symmetric rule is also needed - **never report a
+failure you have not confirmed.** Falsifying probe for the next run: drive one CLEAN docs PR to
+merge with the script's cwd set to `C:\ProjectOperations2` throughout, and record whether
+`Merge-Pr` returns `MERGED` or throws. If it returns `MERGED`, step 4 was the cwd fault and only
+step 3 survives as a finding.
+
+### Correction to this report's own WHAT CHANGED
+
+Item 4 said *"this breadcrumb, and the board PR that carries all of the above"*. The board PR is
+**#2273**, merged `2026-10-09T03:40:03Z`, `origin/main` now **75ba9fad**. The dev tree was
+fast-forwarded to it and is clean on all four readings. The board lease taken at 03:28Z was released
+by `Merge-Pr`'s own `finally` (a later `Exit-BoardLease` returned `False` because the lease was
+already gone, and `Get-BoardLease` read `free`); a fresh lease was taken for this correction and is
+released at the end of it. The `C:\po-wt\st00-0314` worktree was torn down, `git worktree remove`
+exit 0, path confirmed absent.
+
+### Correction to WHAT I DID NOT DO
+
+That section said no merge was made. That was true when written, before #2273 was green. **#2273 was
+merged** - this station's own docs-only board PR, inside its `docs/` lane, through
+`Assert-SmokedOrEscalate` -> `Merge-Pr`, with CP-26 PASSing because a docs-only diff arms no receipt
+requirement. **#2261 was still not merged, and no label was touched.** Every other line of that
+section stands.

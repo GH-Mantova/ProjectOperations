@@ -97,7 +97,8 @@ The watcher owns its own lifecycle. **The launcher that actually runs is
 `C:\po-watcher\watcher-launcher-singlelane.ps1` — it is UNTRACKED and lives outside this repo.**
 Measured 2026-09-02 by Station 04 and re-measured by Station 00 the same run: the live chain is
 `30600 watcher-launcher-singlelane.ps1` → `34332 start-watcher.ps1` → `28400 node index.mjs`, and
-`C:\po-watcher\ensure-watcher.ps1:10` names the same file as its launcher. The tracked
+`C:\po-watcher\ensure-watcher.ps1` (anchor: `$Launcher =`) names the same file as its
+launcher. The tracked
 `scripts/pr-watcher/watcher-launcher.ps1` is **SUPERSEDED** — it contains no reference to
 `start-watcher`, `index.mjs` or `singlelane`, and it is in no running process. Do not start it.
 

@@ -14,6 +14,11 @@ closed, and this run **archived all seven of those breadcrumbs** into
 `docs/pr-prompts/archive/` — the step the station contract asks for once every finding carries a
 disposition, and the first time it has actually been done in this cycle.
 
+**This run also merged its own PR rather than leaving it for the next occurrence** — #2269, MERGED
+01:41:58Z, docs-only, 10 checks green — so the board is back to exactly one open PR and this
+report is already on `main`. (Two paragraphs below were written before that merge and are corrected
+in place, marked 🔴 CORRECTION; nothing has been deleted.)
+
 **One PR is yours and unchanged: #2261**, labelled `do-not-merge`, CI 13 pass / 2 fail, open 46 h.
 I removed no label and touched nothing on it.
 
@@ -198,7 +203,16 @@ Board-driving condition 3. Nothing was mutated before it returned `True`.
 
 ## WHAT CHANGED
 
-Two mutations, both inside this run's own PR worktree, both read back:
+🔴 **CORRECTION 2026-10-09T01:4xZ, by Station 00 `station-00.sched0115c`, in a follow-up PR.**
+This section and the first two bullets of WHAT I DID NOT DO were written **before** the end of the
+run, and they said *"No PR was merged"* and *"this run's own PR is left OPEN"*. Both became FALSE
+within the same run: **#2269 (this breadcrumb's own PR) was merged at 2026-10-09T01:41:58Z** and
+the dev tree was fast-forwarded afterwards. The wrong lines are struck below rather than deleted
+(§10.5 — an artifact keeps one identity for its whole life), and the real mutation count is
+**four**. Recorded here because a report that outlives its own truth is the failure DOCTRINE §7.1
+exists to prevent, and because the next run must not read "nothing merged" as this run's verdict.
+
+Four mutations, the first two inside this run's own PR worktree, all read back:
 
 1. **Seven dispositioned breadcrumbs `git mv`'d to `docs/pr-prompts/archive/`** — the three 00
    breadcrumbs (2238, 2307, 0015), both 03 breadcrumbs (2251, 2306), 04's 2238 and 05's 2238. Read
@@ -208,18 +222,43 @@ Two mutations, both inside this run's own PR worktree, both read back:
 2. **This breadcrumb written** at a tracked path **inside this run's own PR** (the contract's
    Cure 1), so it needs no later sweep to rescue it and leaves nothing untracked in the dev tree
    to block the next fast-forward.
+3. **#2269 MERGED** at `2026-10-09T01:41:58Z` via `Assert-SmokedOrEscalate` → `Merge-Pr`, read back
+   from GitHub as `{"mergedAt":"2026-10-09T01:41:58Z","number":2269,"state":"MERGED"}` — not from
+   the primitive's return value and not from a `QUEUED` state (UPDATE_AT_MERGE_TIME_V1). Checks on
+   head `ad3a35ce` before the merge: `pass=10 skip=5 fail=0 pending=0`, `mss=CLEAN`, polled until
+   settled. CP-26 required no receipt: every path in the diff is under `docs/`, so the diff-armed
+   rule does not fire. Classification before merging: Station 00's own board PR, **no** labels at
+   all, all eight files under `docs/pr-prompts/` and therefore inside 00's recorded `docs/` lane
+   (DOCTRINE §10.1 step 3, classified by STATION-CAPABILITIES §5's authority matrix) — and "not
+   watcher-routed" was treated as necessary, **not** sufficient.
+4. **The dev tree fast-forwarded** `70643bc6` → `647a6dc2`, `FF_EXIT=0`, and **all four** readings
+   clean afterwards: `rev-list --left-right --count HEAD...origin/main` → `0 0`,
+   `diff --numstat origin/main` EMPTY, `diff --cached --name-status` EMPTY, and
+   `status --porcelain --untracked-files=no` EMPTY — the fourth being the one that catches a dirty
+   tree the first three pass. `ROOT_BREADCRUMBS_AFTER_FF=1` (this file alone). No untracked
+   breadcrumb blocked it, because this one was written inside the PR worktree instead of the dev
+   tree. The run's worktree was then removed (`WT_REMOVE_EXIT=0`, `WT_STILL_THERE=False`), so this
+   run adds nothing to the orphan pile in F8.
 
 **Nothing else.** No prompt was armed, disarmed, renamed or moved (`armed = 0` on arrival and on
-exit, and `gates-satisfied = 0 of 14`, so the arming decision did not arise). No PR was merged. No
+exit, and `gates-satisfied = 0 of 14`, so the arming decision did not arise).
+~~No PR was merged.~~ **CORRECTED: #2269 was merged — mutation 3 above. No OTHER PR was merged,
+and #2261 was not touched.** No
 label was added or removed. No `/sot/` file was touched. No escalation was retired or appended to.
-No worktree was pruned. No lock was cleared — none existed. No watcher was stopped, started,
+No worktree was pruned **other than this run's own two**. No lock was cleared — none existed. No
+watcher was stopped, started,
 restarted or probed for liveness beyond the sweep's own reading. No scheduled task was created,
-edited, enabled, disabled or re-run. Nothing was committed to `main` in the dev tree, and the dev
-tree was not fast-forwarded (it was already `0 0` against `origin/main` on arrival). No `git` ran
-against the mount.
+edited, enabled, disabled or re-run. Nothing was committed to `main` in the dev tree.
+~~the dev tree was not fast-forwarded (it was already `0 0` against `origin/main` on arrival).~~
+**CORRECTED: it was `0 0` on arrival and was fast-forwarded after #2269 merged — mutation 4.**
+No `git` ran against the mount.
 
-The board lease was held as `station-00.sched0115` from 01:2xZ and is released at the end of this
-run; `arm-prompt.ps1` was never called, so the hold-past-arm rule did not apply. Scratch went to
+The board lease was held as `station-00.sched0115` from 01:2xZ, renewed before the merge, and
+found already released afterwards — `Exit-BoardLease` returned `False` and `Get-BoardLease`
+returned nothing, i.e. `Merge-Pr` had released it on a successful merge, so the end state is
+**lease free**, reported as measured rather than as intended. A second lease
+(`station-00.sched0115c`) was taken for this correction PR and released with it.
+On the original run; `arm-prompt.ps1` was never called, so the hold-past-arm rule did not apply. Scratch went to
 `C:\po-sup-fix-scripts\` (`sup00-0115-*.ps1`, `sweep2-0115.txt`), outside the repo.
 
 ## FINDINGS
@@ -261,13 +300,18 @@ The reason it matters is not the exception: the run before last answered it by t
 `gh pr merge` by hand, the one command DOCTRINE §1 names, and **a primitive that throws on its own
 happy path trains its callers out of using it.**
 
-**DISPOSITION: DEFERRED**, unchanged, and I had no occasion to re-measure it: **no PR was merged
-this run**, so the falsifying probe the 00:15Z run proposed — the next BEHIND PR merged through
-`Merge-Pr` — is still open. ⚠️ **This run's own PR is the next instance of that probe.** It is
-branched off `70643bc6`, which was `origin/main` at 01:15Z, so unless `main` moves it should be
-CLEAN and take the non-throwing path; if a later run finds it was BEHIND and the first call threw,
-that is the third occurrence and the recommended fix (poll checks after `update-branch`, then
-queue) stops being deferrable. The fix itself is a `scripts/pipeline/pipeline-lib.ps1` change —
+**DISPOSITION: DEFERRED**, unchanged — but the probe was run, and the result NARROWS the finding
+rather than confirming or refuting it. 🔴 **CORRECTION 01:4xZ: this paragraph originally said "no
+PR was merged this run, so the falsifying probe is still open". #2269 was then merged.**
+[MEASURED] #2269 was CLEAN (branched off `70643bc6`, which was `origin/main` at 01:15Z, and `main`
+did not move), `mss=CLEAN` with `pending=0` before the call, and **`Merge-Pr` returned
+`State=MERGED` on its FIRST call with no throw.** So the throw is **specific to the BEHIND path**,
+exactly as both earlier occurrences described it: `update-branch` restarts CI, and the queue
+attempt races it. **A CLEAN PR never enters that path**, which is why this is not urgent and why
+one clean merge is not evidence the defect is gone. ⚠️ The probe still wants a **BEHIND** PR: if a
+later run merges one and the first call does not throw, the finding is wrong; if it throws, that is
+the third occurrence and the recommended fix (poll checks after `update-branch`, then queue) stops
+being deferrable. The fix itself is a `scripts/pipeline/pipeline-lib.ps1` change —
 **the first entry on `instrument-lane.json`'s NEVER-LIST**, which is precisely why #2261 sits red
 and un-mergeable by any station (NEVER_LIST_BEFORE_ARMING_V1). Staging a second prompt into that
 same dead end this run would have added a PR Marco must release to no purpose.
@@ -426,10 +470,15 @@ no station may edit.
 - **Did not arm, disarm, rename or move any prompt.** `armed = 0` on arrival and on exit;
   `gates-satisfied = 0 of 14`. The only queue-root files this PR touches are the seven breadcrumbs
   moved to `archive/`, which are reports, not prompts, and whose filenames are unchanged (§10.5).
-- **Did not merge anything, and did not call `Merge-Pr` or `Assert-SmokedOrEscalate` at all.** The
-  one open PR is Marco's; this run's own PR is left for the next occurrence to drive, exactly as
-  the previous two runs' PRs were. **It is left OPEN, not QUEUED** — no merge was attempted, so
-  nothing here should be read as a queued merge.
+- 🔴 **CORRECTED.** This bullet read: *"Did not merge anything, and did not call `Merge-Pr` or
+  `Assert-SmokedOrEscalate` at all. The one open PR is Marco's; this run's own PR is left for the
+  next occurrence to drive... **It is left OPEN, not QUEUED**."* **That was true when written and
+  false by the end of the run.** What actually happened: CI on #2269 was polled until settled
+  (`pass=10 skip=5 fail=0 pending=0`, `mss=CLEAN`), the lease was renewed,
+  `Assert-SmokedOrEscalate -PR 2269` returned `True`, and `Merge-Pr -PR 2269` returned
+  `State=MERGED` on its **first** call, read back from GitHub as `state=MERGED
+  mergedAt=2026-10-09T01:41:58Z`. **MERGED, not QUEUED.** The only PR left open is **#2261**, which
+  is Marco's and was not touched.
 - **Did not type `gh pr merge`, `gh pr update-branch`, or any raw `git merge` against a PR.**
 - **Did not add or remove any label, on any PR.**
 - **Did not pre-clear a `do-not-arm` marker** (F7), and did not re-ask 04's question in my words.

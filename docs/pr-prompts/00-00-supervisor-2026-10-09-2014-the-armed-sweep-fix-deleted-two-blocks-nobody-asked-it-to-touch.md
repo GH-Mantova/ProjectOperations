@@ -48,10 +48,34 @@ runs). No `[BROKEN]`.
   GitHub in the last 2 min`; `watcher build: no build in flight`
 - `[LIVE] non-main worktrees found: 33`, plus `worktree-registry-escapees: 3 found -- Station 03
   should review and prune if confirmed dead`
-- **[CANNOT MEASURE] the closing SAFE / CAUTION / DO-NOT-ACT verdict.** Section 5's PR crawl was
-  still emitting `[FILE]` rows from one escalation file when I moved on, for the **sixth**
-  consecutive occurrence. I quote no sweep verdict. I re-measured the board-busy signals
-  directly instead (below), which is what the verdict is computed from.
+🟢 **The verdict WAS reached this run, and I nearly reported otherwise.** [MEASURED] the sweep
+ran to completion in its own shell (PID 37136, 489 lines total) while I worked in a second
+shell, and its closing lines are:
+
+```
+==================== 7. VERDICT ====================
+  [LIVE] SAFE TO ACT: no board mutation in progress, no recent remote activity, no live station worktrees.
+SWEEP COMPLETE 2026-10-09 20:15:04Z
+```
+
+I had already drafted this bullet as `[CANNOT MEASURE] ... for the sixth consecutive
+occurrence` before draining that shell at the end of the run. **That would have been a DOCTRINE
+7 instrument lie in the same line six previous runs got wrong** - the instrument was working and
+my reading of it was not. What actually ran out in those runs was the READER, not the sweep. See
+F6, which is rewritten around this.
+
+**Section 5 therefore DID complete, and it found no `[STALE]` rows at all.** [MEASURED] across
+the 52 `needs-marco/` files it printed only `[FILE]` rows of two shapes - `cites #N (MERGED) as
+evidence -- not its premise; does not clear the escalation` and `names no subject PR in its
+filename or first heading but cites N MERGED PR(s) -- section 5 CANNOT decide whether it is
+stale` - plus `(no PR ref, or gh down -- cannot cross-check; read it as a SNAPSHOT)`. It closed
+with `[LIVE] [CANNOT MEASURE] dispatched register absent on origin/main`. So there was nothing
+for me to retire this cycle, and that is now a measurement rather than an omission.
+
+**Section 6 backlog gates.** [MEASURED] `ready=1  needs-marco=2  blocked=4  broken=0`.
+The one READY TO STAGE item is `[P2] rates-11c-blocked-consumers`; the two needs-marco items are
+`[P1] model-merge-slices-rehomed` (explicitly DO NOT AUTO-STAGE) and
+`[P2] map-locations-waste-rate-coupling`. See F7.
 
 **Board re-measured immediately before mutating.** [MEASURED] `.git/index.lock` absent,
 `MERGE_HEAD` absent, no `rebase-merge` / `rebase-apply`, `Get-Process git` count **0**.
@@ -328,23 +352,62 @@ proven squash-merged, preserve the uncommitted files in the two trees named abov
 touching them, and review the three registry escapees. Report the surviving census so the next
 00 can see the direction of travel.
 
-### F6 - The sweep's safe-to-act verdict has now been unreachable for six consecutive occurrences, and the repair is blocked on Marco rather than on engineering
+### F6 - The sweep's verdict was never unreachable. The READER was giving up, and five runs recorded that as the instrument failing
 
-[MEASURED] this is the sixth hourly occurrence (14:27Z, 15:27Z, 16:14Z, 17:14Z, 19:15Z, 20:15Z)
-in which section 5's crawl did not finish inside the run, so the closing SAFE / CAUTION /
-DO-NOT-ACT line was never reached. Every station is told to obey that verdict. The repair is
-written, tested and green - it is #2294 - and it is stopped by a receipt a station may not write
-(F2), not by anything an agent can fix.
+🔴 **This finding reverses what the last five breadcrumbs concluded, including the one I archived
+this run.** [MEASURED] the sweep completed normally this occurrence: 489 lines, section 5 crawled
+all 52 `needs-marco/` files, section 6 printed the backlog gates, and section 7 printed
+`SAFE TO ACT`, with `SWEEP COMPLETE 2026-10-09 20:15:04Z` as its last line. Nothing was changed
+to make that happen - I ran the same `status-sweep.ps1` from `origin/main` that the 19:15Z run
+ran.
 
-What saved this run is that the verdict is DERIVED: section 3's inputs (`git processes touching
-our trees: 0`, `board lease: free`, `no PR touched in the last 2 min`, `no build in flight`) all
-printed, and I re-measured them directly before mutating. **That is a workaround, not a
-substitute** - the verdict also folds in section 5's `[STALE]` rows, which I still have not read
-in six runs.
+The difference is purely in how it was read. The 14:27Z, 15:27Z, 16:14Z, 17:14Z and 19:15Z runs
+each drained the sweep's output synchronously, hit their reading budget partway through section
+5's `[FILE]` rows, and recorded `[CANNOT MEASURE] the verdict`. This run started a SECOND shell,
+did the whole of the board work in it, and drained the first shell at the end - by which time
+the sweep had long finished. **I was one step from writing the same `[CANNOT MEASURE]` line
+myself**; the draft of this breadcrumb contained it.
 
-**ESCALATED** to Marco, folded into the FOR MARCO item below: releasing #2294 is what closes
-this. I am not re-measuring the crawl or hand-rolling the dedupe - hand-rolling a board
-operation whose repair is already written is the failure DOCTRINE 1 names.
+This is DOCTRINE 7 in its purest form, and it had the most expensive polarity available: five
+consecutive runs reported a working instrument as broken, and the pipeline armed, built and is
+now escalating a PR (#2294) to repair something that was not failing. ⚠️ **That does not make
+#2294 wrong or wasted** - section 5 really does ask `gh` once per occurrence rather than once per
+distinct PR number (383 against 153, measured 16:29Z), the dedupe is a real improvement, and
+`-SkipSection5` is a legitimate switch. What is wrong is the *reason* given for urgency. The
+honest framing is "this sweep is slower than it needs to be", not "the gate every station obeys
+is unreachable".
+
+🔧 **The cure costs nothing and is available to the next run immediately: start the sweep in one
+shell, do the run's work in another, and drain the sweep at the end.** No code, no PR, no
+Marco. The reading budget was never the sweep's problem to solve.
+
+**ACTIONED** - verdict quoted above (`SAFE TO ACT`) for the first time in six occurrences, and
+the procedural cure is written down here where the next run collects it. The urgency claim
+attached to #2294 is corrected in FOR MARCO rather than repeated.
+
+### F7 - The backlog gates have a READY TO STAGE item nobody has staged, and I did not read section 6 until after I had finished acting
+
+[MEASURED] section 6: `ready=1  needs-marco=2  blocked=4  broken=0`. The ready item is
+`[P2] rates-11c-blocked-consumers` - "SLICE 11c cannot run: 7 services bypass the rate resolver",
+with the FK decision recorded SETTLED 2026-08-19 and four slices already staged. The two
+needs-marco items (`[P1] model-merge-slices-rehomed`, `[P2] map-locations-waste-rate-coupling`)
+both carry explicit DO-NOT-AUTO-STAGE notes and are Marco's.
+
+I reached this only on the same late drain that produced F6, i.e. after the run's mutations were
+done. Staging is **Station 06's lane**, not mine - I arm what is staged, I do not design new
+work - so nothing was lost by reading it late this once. But a 00 run that never drains its
+sweep never sees the backlog section at all, which is the second thing F6's reading pattern was
+silently costing.
+
+⚠️ I am not arming anything off this line. `rates-11c-blocked-consumers`' own note says the
+consumers are "staged but not yet merged", and the 11c chain is destructive (it drops rate
+tables) with a parity proof that must RUN clean first - that is a hard stop, not a staging
+question.
+
+**DISPATCHED** to **06 PR Master**: confirm whether the four `rates-11c-blocked-consumers`
+slices named in the register are still staged and still have live premises, and say in the
+register what the next arming step is. Nothing in it is armable by 00 until the parity proof has
+run clean.
 
 Two doc changes also belong to this finding and are **DISPATCHED to 05 SoT-keeper** (next
 occurrence 2026-10-10T00:10Z) if it judges them source-of-truth, else to 06 as a staged prompt:
@@ -364,7 +427,11 @@ occurrence 2026-10-10T00:10Z) if it judges them source-of-truth, else to 06 as a
   could have been called on honestly.
 - **Did not restructure #2294's diff to clear the lane gate** (F2). Measured, considered,
   refused.
-- **Did not quote a sweep verdict** (F6). I state the inputs I re-measured instead.
+- **Did not act on the sweep verdict, because I had not read it yet when I acted** (F6). I
+  re-measured section 3's inputs directly before every mutation instead - `git processes
+  touching our trees: 0`, `board lease` taken by me, no `index.lock`, no `MERGE_HEAD`, no
+  rebase state - and the verdict, read afterwards, agrees: `SAFE TO ACT`. Quoting it now is a
+  record, not a retro-justification.
 - **Did not arm anything.** 13 depth-1 HOLDs; the only one that linted ADMIT last run is the one
   now open as #2294, and re-arming it is the F4 hazard. I did not re-lint the other 13: the 1913
   run linted all 14 and recorded nine `HUMAN_GATE_PRESENT` (Marco's to clear) and four
@@ -372,9 +439,9 @@ occurrence 2026-10-10T00:10Z) if it judges them source-of-truth, else to 06 as a
   a file gate - `origin/main` moved only by #2293, a docs-only board PR. [INFERRED], and the
   reason I am content to infer it is that arming is the mutation it would gate, and I armed
   nothing.
-- **Did not triage `needs-marco/` for `[STALE]` rows** - 52 files, 153 distinct PR numbers, and
-  that pass lives in the sweep section that does not finish (F6). No escalation was retired and
-  none was re-surfaced to Marco.
+- **Did not retire any `needs-marco/` escalation** - but this time because there was nothing to
+  retire, not because I could not look. Section 5 completed over all 52 files and produced
+  **zero `[STALE]` rows** (F6). No escalation was retired and none was re-surfaced to Marco.
 - **Did not touch the 33 worktrees or the 3 registry escapees** - 03's lane (F5), and two of
   them hold uncommitted work that `--force` would discard.
 - **Did not add a superseded marker to the restored root HOLD** (F4) - it would compete with
@@ -388,9 +455,16 @@ occurrence 2026-10-10T00:10Z) if it judges them source-of-truth, else to 06 as a
 
 **One thing needs you, and it is small: release PR #2294.**
 
-It repairs `status-sweep.ps1`, whose SAFE / CAUTION / DO-NOT-ACT verdict has now been
-unreachable inside **six consecutive** Station 00 runs - the gate every station is told to obey.
-Everything a station can drive is green: both test jobs pass, 500/500 locally, and I have
+⚠️ **First, a correction to what the last five breadcrumbs told you, mine included until I
+caught it:** the sweep's verdict was NOT unreachable. It completed normally this run and printed
+`SAFE TO ACT`. Five consecutive runs reported a working instrument as broken because they drained
+its output synchronously and ran out of reading budget mid-section-5; running the sweep in one
+shell and the work in another fixes that for free, and I have written that down (F6). **#2294 is
+still worth landing** - section 5 genuinely asks `gh` 383 times for 153 distinct PR numbers, and
+the dedupe plus `-SkipSection5` are real improvements - but it is a speed fix, not an emergency,
+and you should weigh it as one.
+
+Everything a station can drive on it is green: both test jobs pass, 500/500 locally, and I have
 already fixed the two blocks the builder deleted outside its scope. The only red is
 `Approval receipt (CP-26)`, which wants `docs/decisions/merge-approvals/2294.md`, and no
 scheduled station may write the `authority: personal` form it needs. It is labelled

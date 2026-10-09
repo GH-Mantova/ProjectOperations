@@ -117,6 +117,47 @@ if ($ghOk) {
     $pend = @($ci | Select-String -Pattern "pending", "in_progress", "queued" -SimpleMatch -ErrorAction SilentlyContinue).Count
     Line "LIVE" ("      CI: " + $pass + " pass / " + $fail + " fail / " + $pend + " pending" + $(if ($fail -gt 0) { "  <-- RED, do not expect a merge" } elseif ($pend -gt 0) { "  (still running)" } else { "  (green)" }))
   }
+
+  # MARCO_QUEUE_LINE_V1 (Marco, 2026-10-03). REPORT ONLY -- these lines never feed section 7's
+  # SAFE / CAUTION / DO-NOT-ACT verdict. "ARM ONE AT A TIME" stops two runs colliding in the
+  # dev tree; it does not stop five armed prompts producing five PRs that wait on the same
+  # person. The sweep now reports that queue so stations can see what they are adding to.
+  $marcoQueueScript = Join-Path $Repo "scripts\pipeline\marco-queue.mjs"
+  $marcoTmp = [IO.Path]::GetTempFileName()
+  try {
+    $mqRaw = gh pr list --state open --limit 50 --json number,isDraft,labels,createdAt 2>$null | Out-String
+    if ([string]::IsNullOrWhiteSpace($mqRaw)) { $mqRaw = "[]" }
+    # UTF8 without BOM: PS 5.1's Set-Content/Out-File write a BOM that node's JSON.parse rejects.
+    [IO.File]::WriteAllText($marcoTmp, $mqRaw, (New-Object System.Text.UTF8Encoding($false)))
+    $mqOut = & node $marcoQueueScript --now $nowUtc --file $marcoTmp 2>&1
+    $mqExit = $LASTEXITCODE
+    $mqLines = @($mqOut) | Where-Object { $_ -ne $null -and "$_" -ne "" }
+    if ($mqExit -eq 0 -and $mqLines.Count -ge 2) {
+      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
+      # Control: ALL OPEN (non-draft) count MUST equal the non-draft PR count from the open-PR
+      # loop above. A mismatch means one or the other is lying -- never silently paper over it.
+      $nonDraftCount = @($open | Where-Object { -not $_.isDraft }).Count
+      $allOpenLine = $mqLines | Where-Object { "$_" -match '^ALL OPEN \(non-draft\): (\d+)' } | Select-Object -First 1
+      if ($allOpenLine -and "$allOpenLine" -match '^ALL OPEN \(non-draft\): (\d+)') {
+        $reported = [int]$matches[1]
+        if ($reported -ne $nonDraftCount) {
+          Line "LIVE" ("MARCO QUEUE MISMATCH: section 1 counted " + $nonDraftCount + " non-draft PR(s), marco-queue.mjs counted " + $reported + " -- do not trust either number")
+        }
+      }
+    } elseif ($mqExit -eq 2) {
+      # CLI reported [CANNOT MEASURE] on its own line; forward it verbatim rather than
+      # inventing a zero. "I could not measure" is a legitimate answer; "0" is not.
+      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
+      if ($mqLines.Count -eq 0) { Line "LIVE" "WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited 2 with no output" }
+    } else {
+      Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited " + $mqExit + " unexpectedly")
+    }
+  } catch {
+    Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] " + $_.Exception.Message)
+  } finally {
+    if (Test-Path $marcoTmp) { Remove-Item -LiteralPath $marcoTmp -Force -ErrorAction SilentlyContinue }
+  }
+
   $merged = @((gh pr list --state merged --limit 8 --json number,title,mergedAt 2>$null | Out-String | ConvertFrom-Json))
   Line "LIVE" "MERGED (most recent 8):"
   for ($i = 0; $i -lt $merged.Count; $i++) {
@@ -141,7 +182,7 @@ if ($ghOk) {
   if (-not $mainSha) {
     Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
   } else {
-    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName 2>$null | Out-String).Trim()
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName,databaseId,createdAt 2>$null | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
       # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
       # RAW string first, or an empty board reads as a single mystery run.
@@ -191,17 +232,50 @@ if ($ghOk) {
       if ($otherRuns.Count -gt 0) {
         $ofail = 0
         $onames = @{}
+        $otherNewestFail = @{}
         foreach ($r in $otherRuns) {
           $isBad = ($r.conclusion -and $r.conclusion -ne "success" -and $r.conclusion -ne "skipped")
           if ($isBad) { $ofail++ }
           $wfKey = [string]$r.workflowName
           if (-not $onames.ContainsKey($wfKey)) { $onames[$wfKey] = @(0, 0) }
           $onames[$wfKey][0] = $onames[$wfKey][0] + 1
-          if ($isBad) { $onames[$wfKey][1] = $onames[$wfKey][1] + 1 }
+          if ($isBad) {
+            $onames[$wfKey][1] = $onames[$wfKey][1] + 1
+            # Track newest failing run per workflow (ISO string compare is lexicographic = chronological).
+            $rCreated = [string]$r.createdAt
+            if (-not $otherNewestFail.ContainsKey($wfKey) -or $rCreated -gt $otherNewestFail[$wfKey].createdAt) {
+              $otherNewestFail[$wfKey] = @{ id = $r.databaseId; createdAt = $rCreated }
+            }
+          }
         }
         Line "LIVE" ("   NOT trunk CI on this commit, excluded from the verdict above: " + $otherRuns.Count + " run(s), " + $ofail + " failing")
         foreach ($wfKey in $onames.Keys) {
           Line "LIVE" ("      " + $wfKey + ": " + $onames[$wfKey][0] + " run(s), " + $onames[$wfKey][1] + " failing")
+          # HEARTBEAT_ALARM_TEXT_V1 -- when the Pipeline heartbeat workflow has failures, resolve the
+          # newest failing run and extract the alarm sentence from its log. ONE gh run view call per
+          # sweep run at most (guarded by the $onames[$wfKey][1] -gt 0 condition, and only for this
+          # workflow). A failed fetch must fail LOUD, never quiet -- DOCTRINE §7: "a tool that cannot
+          # run must FAIL LOUD, never fail quiet."
+          if ($wfKey -eq "Pipeline heartbeat" -and $onames[$wfKey][1] -gt 0) {
+            $hbRunId = $otherNewestFail[$wfKey].id
+            $hbLog = (gh run view $hbRunId --log-failed 2>$null | Out-String)
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($hbLog)) {
+              Line "LIVE" ("         [CANNOT MEASURE] gh run view " + $hbRunId + " --log-failed returned nothing")
+            } else {
+              $hbAlarm = $null
+              foreach ($hbLine in ($hbLog -split '\r?\n')) {
+                if ($hbLine -match '\[heartbeat\].*$') {
+                  $hbAlarm = $Matches[0].Trim()
+                  break
+                }
+              }
+              if ($hbAlarm) {
+                Line "LIVE" ("         alarm: " + $hbAlarm)
+              } else {
+                Line "LIVE" ("         [CANNOT MEASURE] no [heartbeat] line in gh run view " + $hbRunId + " --log-failed")
+              }
+            }
+          }
         }
       }
     }

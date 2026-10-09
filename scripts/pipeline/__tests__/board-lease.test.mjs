@@ -212,10 +212,31 @@ Set-Content -LiteralPath $env:PO_BOARD_LEASE_PATH -Value 'this is not JSON {{' -
 // requires. If a future edit removes any of these without replacing them, the test fails.
 // ---------------------------------------------------------------------------------------------
 
+// The terminator is [,)] and NOT ')' alone: the assertion's stated intent is that -Actor is
+// declared, typed [string], and defaults to $env:PO_ACTOR -- it was never that $Actor is the
+// ONLY parameter. Pinning the closing paren made the param block unextendable, so adding
+// -SkipSection5 (SECTION_5_SKIP_V1) failed a test whose subject it does not touch. Every
+// element of the original contract is still asserted here; only the incidental
+// "nothing else may be declared" clause is gone. A NEGATIVE control lives directly below.
 test("5. status-sweep.ps1 declares [CmdletBinding()] and -Actor param (BOARD_LEASE_V1)", () => {
   const src = readFileSync(STATUS_SWEEP, "utf8");
-  assert.match(src, /\[CmdletBinding\(\)\]\s*param\s*\(\s*\[string\]\$Actor\s*=\s*\$env:PO_ACTOR\s*\)/,
+  assert.match(src, /\[CmdletBinding\(\)\]\s*param\s*\(\s*\[string\]\$Actor\s*=\s*\$env:PO_ACTOR\s*[,)]/,
     "status-sweep.ps1 must accept -Actor with $env:PO_ACTOR default");
+});
+
+// NEGATIVE control for the relaxation above (DOCTRINE 9.6: a negative control you wrote down is
+// a positive). If the terminator were widened to the point of matching anything, this would
+// pass too -- it must not.
+test("5. the -Actor param regex still rejects a param block that drops the PO_ACTOR default", () => {
+  const re = /\[CmdletBinding\(\)\]\s*param\s*\(\s*\[string\]\$Actor\s*=\s*\$env:PO_ACTOR\s*[,)]/;
+  assert.ok(re.test('[CmdletBinding()]\nparam(\n    [string]$Actor = $env:PO_ACTOR,\n    [switch]$SkipSection5\n)'),
+    "the relaxed regex must still match the real, extended param block");
+  assert.ok(re.test('[CmdletBinding()]\nparam(\n    [string]$Actor = $env:PO_ACTOR\n)'),
+    "the relaxed regex must still match the original single-param block");
+  assert.ok(!re.test('[CmdletBinding()]\nparam(\n    [string]$Actor\n)'),
+    "a param block with no $env:PO_ACTOR default must still FAIL");
+  assert.ok(!re.test('param(\n    [string]$Actor = $env:PO_ACTOR\n)'),
+    "a param block with no [CmdletBinding()] must still FAIL");
 });
 
 test("5. status-sweep.ps1 reads the lease file (section 3) and prints 'board lease:' every run", () => {

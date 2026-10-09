@@ -19,7 +19,27 @@ and the incident that row records.
 | **The agent definition** | `.claude/agents/<NN>-<name>.md` in this repo | any station, by ordinary PR | YES for an agent spawned via the Task tool - it sets `tools:`, `model:`, `isolation:`, `maxTurns:` |
 | **The Cowork account skill** | e.g. `supervisor`, in the Skills UI | Marco, in the Skills UI - an agent cannot edit it | **NO - never invoked** |
 | **The station doc** | `docs/pipeline/stations/0N-*.md` in this repo | any station, by ordinary docs PR | only if the run reads it |
+| **The Codex layer** | root `AGENTS.md` + `.codex/agents/*.toml` in this repo | whoever runs Codex against this repo - **not identified** | **NO for a Cowork scheduled run** - nothing in a station's boot path reads either file |
 | **This file** | `docs/pipeline/STATION-CAPABILITIES.md` | any station, by ordinary docs PR | only if the run reads it |
+
+🔴 **CODEX_LAYER_MAPPED_V1 - the Codex row was added 2026-10-09 because the layer had been in the
+dev tree for 17 days in no map and no linter.** [MEASURED] 2026-10-09T06:1xZ by Station 04
+(breadcrumb `00-04-scanner-2026-10-09-0610-...`, F2): root `AGENTS.md` (1974 bytes, mtimeUtc
+`2026-09-27T22:41:09`) and `.codex/agents/` (9 `.toml` definitions, 57,735 bytes) are both
+**untracked** (`git ls-files --error-unmatch` exit 1) and **not gitignored** (`git check-ignore`
+exit 1). `AGENTS.md` self-describes as the Codex twin of `CLAUDE.md`, and `.codex/agents/*.toml`
+mirrors `.claude/agents/*.md` station for station, `pr-tester` and `pr-fix-reviewer` included.
+**The layer is encoding-clean** - all 9 `.toml` plus `AGENTS.md` read as BYTES with `node`
+(DOCTRINE 9.3, never `Get-Content`) scored `U+FFFD=0 cp1252sig=0` against a synthetic CP1252
+double-encode positive control scoring 1. **So this is a MAP gap, not a damage incident, and must
+not be inflated into one.** The row is added here first because that is this section's own rule.
+**Two questions remain open and neither is guessable: whether `.codex/agents/*.toml` should join
+`lint-station.mjs`'s encoding sweep (its corpus is still exactly
+`const AGENT_DIR_REL = '.claude/agents';`), and whether either path should be tracked or
+gitignored. Both are settled by one answer - WHO RUNS CODEX AGAINST THIS REPO - which is Marco's.**
+Filed for him in this cycle's breadcrumb. ⚠️ **Falsifying probe:** `git ls-files --error-unmatch
+AGENTS.md` and `git check-ignore -v AGENTS.md`. If either ever changes polarity, this row's
+`Who changes it` and the open questions must be re-measured.
 
 🔴 **`.claude/` is gitignored WHOLESALE (`.gitignore:28`); the agent definitions are force-added
 exceptions.** So anything added under `.claude/` in future is invisible to `git status` by default,

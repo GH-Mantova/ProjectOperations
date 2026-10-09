@@ -359,8 +359,26 @@ function Invoke-GitPush {
       Push, then READ BACK the remote SHA and prove it is ours.
       BUG THIS PREVENTS: with ErrorActionPreference=Stop, git's harmless CRLF warnings on stderr
       abort the script BEFORE the push - and the log still looks like it worked.
+
+      MANDATORY PARAMETERS (GITPUSH_WORKTREE_MANDATORY_V1): both -Branch and -WorkTree are now
+      required. The read-back (local SHA == remote SHA) is only as good as $WorkTree - if the
+      caller passes no tree, every git call below runs against the ambient cwd, returns a coherent
+      SHA, and exits 0 while proving nothing about the intended branch. The guard below catches a
+      missing tree BEFORE Push-Location so the failure is loud even with ErrorActionPreference=Continue.
     #>
-    param([string]$Branch, [string]$WorkTree = $script:WORKTREE)
+    param(
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string]$WorkTree
+    )
+
+    # GITPUSH_WORKTREE_MANDATORY_V1 - a missing tree must fail LOUD, never fall back to the
+    # ambient cwd. With ErrorActionPreference=Continue (required by DOCTRINE section 7 guard 7)
+    # a failed Push-Location does NOT stop this function, so every git call below would silently
+    # run against whatever directory the caller happened to be in - and still return a
+    # well-formed SHA and exit 0. Measured 2026-10-07, F10.
+    if (-not (Test-Path -LiteralPath $WorkTree)) {
+        throw ("Invoke-GitPush: WorkTree does not exist: " + $WorkTree)
+    }
 
     Push-Location $WorkTree
     $local = (git rev-parse HEAD).Trim()

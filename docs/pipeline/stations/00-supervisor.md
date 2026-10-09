@@ -261,6 +261,23 @@ on the board**. Station 02's contract is yours; see BOARD DRIVING below.
 - **ARM ONE AT A TIME.** Arming is a `git mv` of a **tracked** `-HOLD.md` to `-ready.md` — never the
   creation of a `-ready.md`, which `.gitignore:75` swallows. Lint ADMIT is necessary, not sufficient
   (DOCTRINE §9.5).
+
+  **MARCO_QUEUE_LINE_V1 — read the sweep's WAITING ON MARCO line before arming.** Arming one at a
+  time stops collisions in the dev tree. It does not protect Marco's queue: every armed prompt that
+  is not docs-only adds a PR he must release. There is **no limit** (Marco, 2026-10-03), so the call
+  is yours. Whenever you arm, copy both lines' figures into your breadcrumb. They are the evidence
+  for any future limit.
+
+  🔴 **NEVER_LIST_BEFORE_ARMING_V1 — read `scripts/pipeline/instrument-lane.json`'s NEVER-LIST
+  before arming an instrument fix.** A prompt whose target files are all never-listed can be
+  admitted by lint, built by the watcher and driven green, and **still be un-mergeable by any
+  station** — `standing-lanes.json` has only `sot` and `instrument`, so CP-26 will fail
+  `RECEIPT_REQUIRED_BY_DIFF` and no receipt form is open to you. [MEASURED] 2026-10-07 by Station
+  00: #2261 (one file, `pipeline-lib.ps1`, the first entry on that never-list) reached 13/15 green
+  before this was noticed. Arming such a prompt is allowed — the build is not wasted if Marco wants
+  the fix — but **say in your breadcrumb that the resulting PR will need Marco's release**, and
+  label the PR `do-not-merge` so the WAITING ON MARCO line counts it. Whether this should instead
+  be mechanical at `lint-prompt.mjs` admission time is open with Marco.
 - **COLLECT BEFORE YOU DISPATCH.** Gather every station breadcrumb since your last run and give each
   finding one of the four dispositions. **Start with `node scripts/pipeline/check-breadcrumb.mjs
   --freshness`.** It names any station that has gone MISSED past its cadence plus a grace

@@ -158,3 +158,4 @@
 2026-09-25T01:29:14Z  ARMED  pr-watcher-adopt-ancestry-and-watchdog-identity  escalates=true  actor=station-00.sched0114  by=Marco@LAPTOP-E6NHU4E4  pid=42636  caller=powershell.exe:23260
 2026-10-07T02:30:35Z  ARMED  pr-gitpush-worktree-mandatory  escalates=true  actor=station-00  by=Marco@LAPTOP-E6NHU4E4  pid=45328  caller=powershell.exe:15384
 2026-10-09T06:13:05Z  ARMED  pr-sweep-quote-the-heartbeat-alarm  escalates=false  actor=station-00.interactive  by=Marco@LAPTOP-E6NHU4E4  pid=35936  caller=node.exe:40912
+2026-10-09T19:17:32Z  ARMED  pr-sweep-section5-dedupe-and-fast-switch  escalates=false  actor=station-00.scheduled  by=Marco@LAPTOP-E6NHU4E4  pid=42940  caller=powershell.exe:17124

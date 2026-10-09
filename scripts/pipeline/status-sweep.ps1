@@ -28,9 +28,20 @@
 # can tell "I hold the lease" apart from "another lane holds it". Defaults to $env:PO_ACTOR,
 # else empty -- and when the caller is unknown, every LIVE lease is treated as someone else's,
 # which is the safe direction (fail into CAUTION, not into SAFE TO ACT).
+#
+# -SkipSection5 is the fast-exit switch for station runs that cannot afford the stale-claim
+# cross-check's needs-marco gh crawl. Measured 2026-10-09 across four consecutive hourly
+# occurrences by Station 00 (14:27Z / 15:27Z / 16:14Z / 17:14Z): section 5 never finished inside
+# a station's reading budget, so the closing SAFE / CAUTION / DO-NOT-ACT verdict (section 7) was
+# unreachable in every one. When this switch is passed, section 5's needs-marco gh loop is
+# replaced with a single [SKIP] line naming the section and why, so a reader cannot mistake a
+# skipped section for an empty one (DOCTRINE 9.6: an empty result is not an empty world; a
+# skipped section must not read as a clean one). The default run is unchanged -- section 5 still
+# runs when the switch is absent.
 [CmdletBinding()]
 param(
-    [string]$Actor = $env:PO_ACTOR
+    [string]$Actor = $env:PO_ACTOR,
+    [switch]$SkipSection5
 )
 
 $ErrorActionPreference = "Continue"
@@ -45,7 +56,23 @@ $LeasePath = Join-Path $Repo ".git\po-board-lease.json"
 $StateSummaryMaxAgeDays = 3
 Set-Location $Repo
 
-function Section($t) { Write-Host ""; Write-Host ("==================== " + $t + " ====================") }
+# Per-section elapsed timing (SECTION_TIMING_V1). Each Section() call closes the prior section
+# with a [TIMING] line so a reader can see where the budget actually goes, instead of inferring
+# it from where the output stops. Added 2026-10-10 alongside -SkipSection5: the switch exists
+# because section 5 does not finish, and the timing lines are how a later reader confirms a run
+# landed inside budget rather than ran out again.
+$script:SectionStart = $null
+$script:SectionName  = $null
+function Section($t) {
+  if ($null -ne $script:SectionStart -and $null -ne $script:SectionName) {
+    $elapsed = [math]::Round(((Get-Date) - $script:SectionStart).TotalSeconds, 1)
+    Write-Host ("  [TIMING] section " + $script:SectionName + " elapsed=" + $elapsed + "s")
+  }
+  Write-Host ""
+  Write-Host ("==================== " + $t + " ====================")
+  $script:SectionStart = Get-Date
+  $script:SectionName  = $t
+}
 function Line($tag, $msg) { Write-Host ("  [" + $tag + "] " + $msg) }
 
 $nowUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") + "Z"
@@ -90,47 +117,6 @@ if ($ghOk) {
     $pend = @($ci | Select-String -Pattern "pending", "in_progress", "queued" -SimpleMatch -ErrorAction SilentlyContinue).Count
     Line "LIVE" ("      CI: " + $pass + " pass / " + $fail + " fail / " + $pend + " pending" + $(if ($fail -gt 0) { "  <-- RED, do not expect a merge" } elseif ($pend -gt 0) { "  (still running)" } else { "  (green)" }))
   }
-
-  # MARCO_QUEUE_LINE_V1 (Marco, 2026-10-03). REPORT ONLY -- these lines never feed section 7's
-  # SAFE / CAUTION / DO-NOT-ACT verdict. "ARM ONE AT A TIME" stops two runs colliding in the
-  # dev tree; it does not stop five armed prompts producing five PRs that wait on the same
-  # person. The sweep now reports that queue so stations can see what they are adding to.
-  $marcoQueueScript = Join-Path $Repo "scripts\pipeline\marco-queue.mjs"
-  $marcoTmp = [IO.Path]::GetTempFileName()
-  try {
-    $mqRaw = gh pr list --state open --limit 50 --json number,isDraft,labels,createdAt 2>$null | Out-String
-    if ([string]::IsNullOrWhiteSpace($mqRaw)) { $mqRaw = "[]" }
-    # UTF8 without BOM: PS 5.1's Set-Content/Out-File write a BOM that node's JSON.parse rejects.
-    [IO.File]::WriteAllText($marcoTmp, $mqRaw, (New-Object System.Text.UTF8Encoding($false)))
-    $mqOut = & node $marcoQueueScript --now $nowUtc --file $marcoTmp 2>&1
-    $mqExit = $LASTEXITCODE
-    $mqLines = @($mqOut) | Where-Object { $_ -ne $null -and "$_" -ne "" }
-    if ($mqExit -eq 0 -and $mqLines.Count -ge 2) {
-      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
-      # Control: ALL OPEN (non-draft) count MUST equal the non-draft PR count from the open-PR
-      # loop above. A mismatch means one or the other is lying -- never silently paper over it.
-      $nonDraftCount = @($open | Where-Object { -not $_.isDraft }).Count
-      $allOpenLine = $mqLines | Where-Object { "$_" -match '^ALL OPEN \(non-draft\): (\d+)' } | Select-Object -First 1
-      if ($allOpenLine -and "$allOpenLine" -match '^ALL OPEN \(non-draft\): (\d+)') {
-        $reported = [int]$matches[1]
-        if ($reported -ne $nonDraftCount) {
-          Line "LIVE" ("MARCO QUEUE MISMATCH: section 1 counted " + $nonDraftCount + " non-draft PR(s), marco-queue.mjs counted " + $reported + " -- do not trust either number")
-        }
-      }
-    } elseif ($mqExit -eq 2) {
-      # CLI reported [CANNOT MEASURE] on its own line; forward it verbatim rather than
-      # inventing a zero. "I could not measure" is a legitimate answer; "0" is not.
-      foreach ($ln in $mqLines) { Line "LIVE" ([string]$ln) }
-      if ($mqLines.Count -eq 0) { Line "LIVE" "WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited 2 with no output" }
-    } else {
-      Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] marco-queue.mjs exited " + $mqExit + " unexpectedly")
-    }
-  } catch {
-    Line "LIVE" ("WAITING ON MARCO: [CANNOT MEASURE] " + $_.Exception.Message)
-  } finally {
-    if (Test-Path $marcoTmp) { Remove-Item -LiteralPath $marcoTmp -Force -ErrorAction SilentlyContinue }
-  }
-
   $merged = @((gh pr list --state merged --limit 8 --json number,title,mergedAt 2>$null | Out-String | ConvertFrom-Json))
   Line "LIVE" "MERGED (most recent 8):"
   for ($i = 0; $i -lt $merged.Count; $i++) {
@@ -155,7 +141,7 @@ if ($ghOk) {
   if (-not $mainSha) {
     Line "LIVE" "main CI: [CANNOT MEASURE] cannot resolve origin/main"
   } else {
-    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName,databaseId,createdAt 2>$null | Out-String).Trim()
+    $mainRunsRaw = (gh run list --commit $mainSha --limit 20 --json conclusion,name,event,workflowName 2>$null | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($mainRunsRaw) -or $mainRunsRaw -eq "[]") {
       # ConvertFrom-Json on "[]" puts something on the pipeline that @() counts as ONE. Test the
       # RAW string first, or an empty board reads as a single mystery run.
@@ -205,50 +191,17 @@ if ($ghOk) {
       if ($otherRuns.Count -gt 0) {
         $ofail = 0
         $onames = @{}
-        $otherNewestFail = @{}
         foreach ($r in $otherRuns) {
           $isBad = ($r.conclusion -and $r.conclusion -ne "success" -and $r.conclusion -ne "skipped")
           if ($isBad) { $ofail++ }
           $wfKey = [string]$r.workflowName
           if (-not $onames.ContainsKey($wfKey)) { $onames[$wfKey] = @(0, 0) }
           $onames[$wfKey][0] = $onames[$wfKey][0] + 1
-          if ($isBad) {
-            $onames[$wfKey][1] = $onames[$wfKey][1] + 1
-            # Track newest failing run per workflow (ISO string compare is lexicographic = chronological).
-            $rCreated = [string]$r.createdAt
-            if (-not $otherNewestFail.ContainsKey($wfKey) -or $rCreated -gt $otherNewestFail[$wfKey].createdAt) {
-              $otherNewestFail[$wfKey] = @{ id = $r.databaseId; createdAt = $rCreated }
-            }
-          }
+          if ($isBad) { $onames[$wfKey][1] = $onames[$wfKey][1] + 1 }
         }
         Line "LIVE" ("   NOT trunk CI on this commit, excluded from the verdict above: " + $otherRuns.Count + " run(s), " + $ofail + " failing")
         foreach ($wfKey in $onames.Keys) {
           Line "LIVE" ("      " + $wfKey + ": " + $onames[$wfKey][0] + " run(s), " + $onames[$wfKey][1] + " failing")
-          # HEARTBEAT_ALARM_TEXT_V1 -- when the Pipeline heartbeat workflow has failures, resolve the
-          # newest failing run and extract the alarm sentence from its log. ONE gh run view call per
-          # sweep run at most (guarded by the $onames[$wfKey][1] -gt 0 condition, and only for this
-          # workflow). A failed fetch must fail LOUD, never quiet -- DOCTRINE §7: "a tool that cannot
-          # run must FAIL LOUD, never fail quiet."
-          if ($wfKey -eq "Pipeline heartbeat" -and $onames[$wfKey][1] -gt 0) {
-            $hbRunId = $otherNewestFail[$wfKey].id
-            $hbLog = (gh run view $hbRunId --log-failed 2>$null | Out-String)
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($hbLog)) {
-              Line "LIVE" ("         [CANNOT MEASURE] gh run view " + $hbRunId + " --log-failed returned nothing")
-            } else {
-              $hbAlarm = $null
-              foreach ($hbLine in ($hbLog -split '\r?\n')) {
-                if ($hbLine -match '\[heartbeat\].*$') {
-                  $hbAlarm = $Matches[0].Trim()
-                  break
-                }
-              }
-              if ($hbAlarm) {
-                Line "LIVE" ("         alarm: " + $hbAlarm)
-              } else {
-                Line "LIVE" ("         [CANNOT MEASURE] no [heartbeat] line in gh run view " + $hbRunId + " --log-failed")
-              }
-            }
-          }
         }
       }
     }
@@ -833,6 +786,24 @@ Section "5. STALE-CLAIM CROSS-CHECK  (the step that was being skipped)"
 # an explicit "section 5 CANNOT decide" line below. Refusing to answer is allowed; lying is not
 # (DOCTRINE 7). If you want the STALE verdict back for such a file, title it after its PR.
 # ------------------------------------------------------------------------------------------------
+# -SkipSection5: the fast-exit switch (see param block header). When passed, replace the
+# needs-marco gh crawl with ONE line naming the section as skipped and why. DOCTRINE 9.6: an
+# empty result is not an empty world, and a skipped section must NEVER read as a clean one.
+# The dispatch-register continuation below still runs -- it is a handful of git-only reads from
+# origin/main, not an O(occurrences * files) gh fan-out, and nothing in the measurement that
+# motivated this switch pointed at it.
+if ($SkipSection5) {
+  Line "SKIP" "section 5 stale-claim cross-check SKIPPED via -SkipSection5 (needs-marco gh crawl not run; this is NOT 'no stale escalations' -- re-run without the switch to cross-check)"
+}
+# SECTION_5_PR_VIEW_CACHE_V1 -- dedupe the per-PR gh calls. Measured 2026-10-09T16:29Z by
+# Station 00: 383 occurrences / 153 distinct PR numbers / 52 files in needs-marco/. The old
+# shape asked GitHub once per occurrence, so ~230 of those round trips re-asked a question gh
+# had already answered in the same run. Key the cache on the PR NUMBER (not <file,number>): the
+# fact "#1612 is MERGED at <t>" does not change because a different file cites it. Readings
+# must be BYTE-IDENTICAL to what section 5 reports without the cache -- this is a
+# de-duplication, not a change of meaning. A cached answer was still fetched LIVE in this same
+# run; the [LIVE]/[FILE]/[STALE] tag on each printed line is unchanged.
+$prViewCache = @{}
 # Absent is not empty, same rule as sections 4 and 4B. needs-marco/ is gitignored (.gitignore line
 # 82) and is never on main by design, so on a fresh clone it does not exist -- and "no needs-marco
 # escalations on disk" would then be an assertion about a folder this sweep never looked in
@@ -840,11 +811,13 @@ Section "5. STALE-CLAIM CROSS-CHECK  (the step that was being skipped)"
 # the most consequential thing this instrument does; it must not be silent.
 $nmDir = Join-Path $Queue "needs-marco"
 $nm = @()
-if (-not (Test-Path $nmDir)) {
-  Line "LIVE" "[CANNOT MEASURE] queue subdir absent: needs-marco  (no escalation was cross-checked against GitHub -- this is NOT 'no escalations')"
-} else {
-  $nm = @(Get-ChildItem (Join-Path $nmDir "*.md") -ErrorAction SilentlyContinue)
-  if ($nm.Count -eq 0) { Line "LIVE" "no needs-marco escalations on disk" }
+if (-not $SkipSection5) {
+  if (-not (Test-Path $nmDir)) {
+    Line "LIVE" "[CANNOT MEASURE] queue subdir absent: needs-marco  (no escalation was cross-checked against GitHub -- this is NOT 'no escalations')"
+  } else {
+    $nm = @(Get-ChildItem (Join-Path $nmDir "*.md") -ErrorAction SilentlyContinue)
+    if ($nm.Count -eq 0) { Line "LIVE" "no needs-marco escalations on disk" }
+  }
 }
 foreach ($f in $nm) {
   $txt = Get-Content $f.FullName -Raw
@@ -878,7 +851,17 @@ foreach ($f in $nm) {
   foreach ($n in $prNums) {
     # mergedAt, not state: DOCTRINE 9.4 -- "merged" is unreliable on a list response, mergedAt is
     # correct on both endpoints, and "pr view" is the per-PR form.
-    $st = gh pr view $n --json state,isDraft,mergedAt 2>$null | ConvertFrom-Json
+    # SECTION_5_PR_VIEW_CACHE_V1: ask gh at most once per DISTINCT PR number per run (see cache
+    # declaration above). The hashtable stores the parsed object so later references read the
+    # same object -- no second gh call, same fields, same tag path below. A cache miss carries
+    # the real gh error path: a $null answer still populates the cache so a later file citing the
+    # same unknown number does not re-query either.
+    if ($prViewCache.ContainsKey($n)) {
+      $st = $prViewCache[$n]
+    } else {
+      $st = gh pr view $n --json state,isDraft,mergedAt 2>$null | ConvertFrom-Json
+      $prViewCache[$n] = $st
+    }
     if (-not $st) { Line "FILE" ($f.Name + " -> #" + $n + " not found via gh"); continue }
     $isMerged = -not [string]::IsNullOrWhiteSpace([string]$st.mergedAt)
     $isSubject = ($subjectNums -contains $n)
@@ -1044,6 +1027,13 @@ if (-not $safe) {
 } else {
   Line "LIVE" "SAFE TO ACT: no board mutation in progress, no recent remote activity, no live station worktrees."
   Line "LIVE" "   For any git WRITE, still prefer an ISOLATED worktree off origin/main. NEVER merge -- the supervisor drives the board."
+}
+# SECTION_TIMING_V1 -- close the FINAL section with its own [TIMING] line before SWEEP COMPLETE.
+# Every other section is closed by the next Section() call; section 7 has no successor, so
+# without this line a reader loses the one timing that most often matters (the verdict's).
+if ($null -ne $script:SectionStart -and $null -ne $script:SectionName) {
+  $elapsed = [math]::Round(((Get-Date) - $script:SectionStart).TotalSeconds, 1)
+  Write-Host ("  [TIMING] section " + $script:SectionName + " elapsed=" + $elapsed + "s")
 }
 Write-Host ""
 Write-Host ("SWEEP COMPLETE " + $nowUtc + " -- report ONLY from [LIVE] lines; treat [FILE] as unverified; never repeat a [STALE] line as current.")

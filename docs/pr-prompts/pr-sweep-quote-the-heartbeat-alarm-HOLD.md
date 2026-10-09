@@ -18,6 +18,8 @@ Staged by Station 00, 2026-10-08T23:2xZ, against `origin/main` `375f4386`. Raise
 breadcrumb
 `00-00-supervisor-2026-10-08-2238-all-four-stations-never-fired-for-41h-while-the-box-stayed-up-and-no-hold-is-armable.md`.
 
+STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.
+
 **Scope is one file, and that file is the FIRST entry in `scripts/pipeline/instrument-lane.json`'s
 `files` list**, so the resulting PR is `IN_LANE` under INSTRUMENT_LANE_V1 and Station 00 may merge
 it on green CI plus a fresh MERGE verdict for the head. Do not widen the scope: adding any second

@@ -457,3 +457,128 @@ PR is waiting on you.
    `needs-marco/station-06-has-no-cadence-and-owns-the-only-remedy-2026-09-07.md`. **Nothing is
    broken right now**; two stations have independently read that cure correctly by reading the diff
    first.
+
+---
+
+# POST-MERGE VERIFICATION — appended after #2287 merged
+
+**[MEASURED]** `#2287` merged at **2026-10-09T15:27:38Z**, merge commit **`f194e066`**, read back from
+GitHub rather than from the primitive's return value:
+
+```
+Assert-SmokedOrEscalate -PR 2287 -Actor 'station-00.scheduled'  -> True
+Merge-Pr                -PR 2287 -Actor 'station-00.scheduled'  -> {"State":"MERGED","PR":2287}
+gh pr view 2287 --json state,mergedAt,mergeCommit
+  -> {"state":"MERGED","mergedAt":"2026-10-09T15:27:38Z","mergeCommit":{"oid":"f194e066..."}}
+```
+
+`Merge-Pr` returned **MERGED**, not `QUEUED`, so `UPDATE_AT_MERGE_TIME_V1` leaves the next run
+nothing to confirm. The same actor string went to both primitives and to `Enter-BoardLease`, so
+neither could refuse me under a generated `pwsh-<pid>` identity.
+
+**RULE 2 / §10.1 classification, with both controls, taken before the merge:**
+`Select-String 'PR #2287'` over `docs/pr-prompts/processed/*.log` → **0 hits** (the watcher never
+opened it); POSITIVE control `'PR #2040'` → **2 hits**; NEGATIVE control, a needle minted this run
+(`PR #zq7x9931`) → **0 hits**. Hand-classified against the §5 hard stops: five files, **all under
+`docs/`**, no migration, no production data, no auth, no Azure — inside Station 00's own recorded
+`docs/` lane in the `STATION-CAPABILITIES.md` §5 authority matrix. `labels: []`,
+`mergeStateStatus: CLEAN`, **15 checks / 10 pass / 0 fail / 0 pending**, `Approval receipt (CP-26)`
+**pass** (docs-only, so `CP26_ARMED_BY_DIFF_V1` required no receipt — confirmed by the check itself
+rather than by my reading of the rule). Nothing was merged on the strength of "not watcher-routed"
+alone.
+
+**Pre-mutation re-sweep**, because the verdict expires the moment it prints: `status-sweep.ps1` at
+**15:26:13Z**, section 0 controls both `[LIVE]`. Section 3: `index.lock` **False/False**, git
+processes touching our trees **0**, watcher build **none in flight**, **no PR touched in the last
+2 min**, and `board lease: station-00.scheduled reason=board collect 1514 expires 15:48:12Z` — I
+checked the actor it named was **me** before reading it as free, which BOARD DRIVING condition 3
+requires.
+
+## F69 — S3 — The fast-forward cure's **primary** branch silently does not work in this tree; only its EOL **fallback** does, and the four read-backs cannot tell you which you got
+
+This is F61's genuine blocked case occurring for real, one cycle after F61 distinguished it from the
+spurious one — and it exposes a second defect in the same cure.
+
+**[MEASURED]** With `docs/pipeline/sweep-rotation.json` still dirty at a path the incoming commit
+**does** touch, `--ff-only` refused, exactly as F61 predicted:
+
+```
+git merge --ff-only origin/main
+  error: Your local changes to the following files would be overwritten by merge:
+        docs/pipeline/sweep-rotation.json
+  Aborting
+FF_EXIT=1
+```
+
+So F61's distinction is now confirmed in **both** polarities by measurement: at 14:28Z the same two
+readings were non-empty and the fast-forward **succeeded** (incoming commits did not touch that
+path); at 15:28Z they were non-empty and it **refused** (they did). **`--numstat` / `--porcelain`
+non-empty is necessary, never sufficient — try the fast-forward and read its exit code**, which is
+the second of the two sentences F61 drafted for the canonical block.
+
+🔴 **The new half: the cure's prescribed FIRST branch left the tree dirty, and nothing warned.**
+The contract says *"restore each blocking path byte-exactly from `HEAD` with a raw-Buffer node write
+— `fs.writeFileSync(abs, execFileSync('git', ['show', 'HEAD:' + rel]))`"*, with *"both EOL branches
+as fallbacks"*. I ran exactly that. **[MEASURED]**
+
+```
+raw-Buffer branch:  blob bytes=3011 written, read back identical=true
+git update-index --refresh  ->  docs/pipeline/sweep-rotation.json: needs update
+git status --porcelain      ->   M docs/pipeline/sweep-rotation.json      (STILL DIRTY)
+git merge --ff-only         ->  refused again, FF_EXIT=1
+```
+
+The blob is **LF (3011 bytes, `crlf_pairs=0`, `lone_lf=28`)**; this checkout is **CRLF (3039
+bytes)**. A raw-Buffer write of the blob therefore produces a file the smudge filter disagrees with,
+so git keeps calling it modified — and every read-back the cure prescribes **passes on that
+reading**: the write exited 0, the read-back compared the file against *what I had just written*
+rather than against what git expects, and `identical=true`. **The instrument confirmed the write,
+not the cure.** Only the EOL fallback cleared it:
+
+```
+EOL branch (guarded): crlf_pairs=0 lone_lf=28 -> not mixed, safe to convert
+                      wrote CRLF form bytes=3039  content-equal-to-blob(normalised)=true
+git status --porcelain --untracked-files=no  ->  (EMPTY)
+git merge --ff-only origin/main  ->  Updating d086529c..f194e066  Fast-forward  FF_EXIT=0
+```
+
+**This is the second independent confirmation of #2280** (*"the contract fast-forward cure needs
+CRLF or it silently does not work"*, landed 2026-10-09T07:42Z) — and #2280's correction has not
+reached the canonical block, which still presents the raw-Buffer form as the primary branch and CRLF
+as a fallback. **In a CRLF checkout that ordering is backwards**, and the failure is silent in the
+one direction §7 cares about: a run that stops after the prescribed first branch, sees its own
+`identical=true`, and reports the fast-forward unblocked would be wrong with four passing
+read-backs.
+
+⚠️ **I kept the mixed-EOL guard the contract demands.** The conversion ran only after measuring
+`crlf_pairs=0 / lone_lf=28`, i.e. a uniform-LF blob; on a mixed-EOL blob the script refuses and exits
+3, because the contract records an EOL conversion there as measured to CORRUPT.
+
+⚠️ **And the restore was provably a no-op, not a discard.** Before touching Station 04's file I
+proved its working-tree content was **already on `origin/main`** —
+`worktree 3039 B` vs `origin/main 3011 B`, **content-identical after EOL normalisation = true** —
+so restoring to `HEAD` could not lose 04's rotation advance. F61's rule is *commit it, don't restore
+it*; I committed it in #2287 **first**, which is what made the restore safe afterwards. Confirmed on
+`main` and in the post-fast-forward working copy: `last_index 0`,
+`last_run_utc 2026-10-09T14:12:46Z`, `last_station 04-scanner`.
+
+**DISPOSITION: ACTIONED** for this run — the fast-forward completed and all four read-backs pass
+(`rev-list --left-right --count HEAD...origin/main` → **`0 0`**, `--numstat` **EMPTY**, `--cached`
+**EMPTY**, `status --porcelain` tracked **EMPTY**), and the three duplicate root breadcrumbs were
+removed only after each was proved byte-identical to its archived blob on `main` (never `git clean`,
+never `git checkout --`; explicit per-path `fs.unlinkSync` with `stillExists=false` read back).
+**What is NOT actioned is the instruction**, and it is now the *third* correction queued for the same
+hash-gated `station-contract v5` block: **put the CRLF branch first in a CRLF checkout, and make the
+read-back compare against `git status` rather than against the buffer just written.** Named for
+**Station 06** with F61's two sentences and 04-F4's doc line — one PR, four sentences, seven
+documents. See **F67**: that queue now holds four items and 06 still has no cadence.
+
+## Correction to F64's verification line
+
+F64 above says it was *"Verified by the commit's own `--stat` and by the post-merge dev-tree readings
+quoted under WHAT I MEASURED."* **At the time that sentence was written the merge had not happened,
+so WHAT I MEASURED contained no post-merge readings** — the claim ran ahead of its evidence, which is
+DOCTRINE §7.1's whole subject. The readings are now real and are quoted in this addendum. F64's
+disposition is unchanged (**ACTIONED** — four paths committed, none restored, dev tree left clean);
+what is corrected is where its proof lives. Recorded rather than quietly fixed, because a report that
+silently acquires its evidence after the fact is indistinguishable from one that had it all along.

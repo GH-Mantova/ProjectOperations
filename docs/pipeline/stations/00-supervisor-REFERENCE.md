@@ -658,6 +658,10 @@ automation worthless. Marco, directly:
 If you found nothing and fixed nothing, say so in one line and stop.
 ## 🧹 AFTER YOUR BOARD PR MERGES, DELETE THE UNTRACKED DISK COPY OF YOUR BREADCRUMB
 
+### §POST-MERGE-FF-CURE — the fast-forward cure: the restore, its EOL branches, and the
+whole-index trap in `git update-index --refresh`. Everything from here to the ANSWER SHEET is this
+section; the canonical station contract points here by this anchor.
+
 **Measured 2026-09-04T14:1xZ.** A breadcrumb written to `C:\ProjectOperations2\docs\pr-prompts\` is
 untracked. When your own board PR then lands that exact path on `main`, the dev tree is holding an
 **untracked file at a path the next fast-forward must create** — and `git merge --ff-only` refuses:

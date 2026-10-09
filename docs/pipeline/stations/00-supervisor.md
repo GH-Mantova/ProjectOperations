@@ -210,7 +210,11 @@ PASS reading. A TRACKED file you left modified or deleted there blocks it identi
 avoids all of it: write the breadcrumb inside your own run's PR worktree.** If you did write one into
 the dev tree, restore each blocking path byte-exactly from `HEAD` with a raw-Buffer node write -
 `fs.writeFileSync(abs, execFileSync('git', ['show', 'HEAD:' + rel]))` - then `git update-index
---refresh`; exit 0 means fast-forward now. Never `git checkout -- <path>`, never `git clean`
+--refresh`, then read its PER-PATH output, never its exit code - `update-index --refresh` is a
+WHOLE-INDEX operation, so a non-zero exit can name only an unrelated path, and reaching for an EOL
+conversion on that reading is measured to CORRUPT a mixed-EOL blob. Raw-Buffer write first, both EOL
+branches as fallbacks, each measured in full: `Full detail: 00-supervisor-REFERENCE.md
+§POST-MERGE-FF-CURE`. Never `git checkout -- <path>`, never `git clean`
 (DOCTRINE §9.2 - consumed prompts come back armed). Read back **all four**: `git rev-list
 --left-right --count HEAD...origin/main` -> `0 0`, `--numstat` EMPTY, `--cached` EMPTY, and
 `git status --porcelain` (tracked) EMPTY. The first three pass on a dirty tree; only the fourth
@@ -404,7 +408,15 @@ stage-ready items; merge green PRs), under ALL of — these are permanent operat
    never `C:\po-watcher`, never the interactive tree. Tear it down always.
 3. **Single actor (BOARD_LEASE_V1, 2026-10-03)** — take the board lease (`Enter-BoardLease`) before
    any arm, merge, branch update or label change. If it is refused, COLLECT only and say WHO held
-   it (the refusal line names the actor and its reason). Release it when the mutation lands;
+   it (the refusal line names the actor and its reason) - but FIRST check the actor it names is
+   not YOU. 🔴 **`Merge-Pr` and `arm-prompt.ps1` default to a GENERATED actor (`pwsh-<pid>`) when
+   `-Actor` is unset and `$env:PO_ACTOR` is empty, so a station correctly holding the lease is
+   refused by its own lease and the message calls the holder "another lane".** Pass the SAME actor
+   string you gave `Enter-BoardLease`, via `-Actor` or `$env:PO_ACTOR`. [MEASURED] 2026-10-09 on
+   #2279: `Merge-Pr -PR 2279` warned `-Actor not set ... using 'pwsh-6924'` and refused against
+   `station-00.scheduled`; the same call with `-Actor 'station-00.scheduled'` returned MERGED.
+   Taking that refusal at face value is a FALSE LL-38 stand-down - the expensive direction.
+   Release it when the mutation lands;
    `arm-prompt.ps1` leaves it held so the gap between arm and the watcher's heartbeat stays
    covered, and the lease expires on its own after 30 minutes. The existing lock, process and
    recent-activity checks still run — the lease is **in addition to**, not instead of, them:

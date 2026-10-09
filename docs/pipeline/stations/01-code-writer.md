@@ -241,7 +241,11 @@ PASS reading. A TRACKED file you left modified or deleted there blocks it identi
 avoids all of it: write the breadcrumb inside your own run's PR worktree.** If you did write one into
 the dev tree, restore each blocking path byte-exactly from `HEAD` with a raw-Buffer node write -
 `fs.writeFileSync(abs, execFileSync('git', ['show', 'HEAD:' + rel]))` - then `git update-index
---refresh`; exit 0 means fast-forward now. Never `git checkout -- <path>`, never `git clean`
+--refresh`, then read its PER-PATH output, never its exit code - `update-index --refresh` is a
+WHOLE-INDEX operation, so a non-zero exit can name only an unrelated path, and reaching for an EOL
+conversion on that reading is measured to CORRUPT a mixed-EOL blob. Raw-Buffer write first, both EOL
+branches as fallbacks, each measured in full: `Full detail: 00-supervisor-REFERENCE.md
+§POST-MERGE-FF-CURE`. Never `git checkout -- <path>`, never `git clean`
 (DOCTRINE §9.2 - consumed prompts come back armed). Read back **all four**: `git rev-list
 --left-right --count HEAD...origin/main` -> `0 0`, `--numstat` EMPTY, `--cached` EMPTY, and
 `git status --porcelain` (tracked) EMPTY. The first three pass on a dirty tree; only the fourth

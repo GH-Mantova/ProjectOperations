@@ -8,7 +8,6 @@ premise_means: >-
   This slice retires it and replaces it with an integrity check on the id. It is deliberately the
   LAST slice - the guard protects the legacy table that still prices every job.
 requires_on_main:
-  - scripts/rates/backfill-waste-map-location-ids.mjs :: NO MATCH
   - docs/audits/waste-map-location-backfill.md :: BACKFILL_UNMATCHED_ZERO
   - docs/data-model/rates-migration/STEP-11C-DONE.md :: ESTIMATE_WASTE_RATES_DROPPED
 scope:
@@ -33,12 +32,27 @@ ruling, option (d).
 
 `escalates: true` — this removes a live safety check. Open the PR and leave it unmerged.
 
-## 🔴 HARD STOP — ENFORCED BY THREE MACHINE GATES, NOT BY THIS PARAGRAPH
+## 🔴 HARD STOP — ENFORCED BY TWO MACHINE GATES, NOT BY THIS PARAGRAPH
+
+> **CORRECTION 2026-10-09, Station 00 (`station-00.sched0015`).** This prompt previously declared
+> **three** `requires_on_main` gates, and the first of them —
+> `scripts/rates/backfill-waste-map-location-ids.mjs :: NO MATCH` — **could never hold**.
+> [MEASURED] by Station 04 on 2026-10-08 and re-confirmed here: `NO MATCH` is that script's own
+> human-readable **failure label** (it is what `renderReceipt` prints for a row whose status is
+> `NO_MATCH`, `NO_FACILITY_CELL` or `AMBIGUOUS`), not a release marker. The token was therefore
+> present in the script's bytes from the moment the script landed, so the gate released on landing
+> and could never shut again. The gate is **removed rather than re-pointed**, because the intent
+> the table below recorded for it — *"the predecessor exists at all"* — is already strictly implied
+> by the remaining first gate: `docs/audits/waste-map-location-backfill.md` can only exist on
+> `main` if that very script has run. **The prompt's effective protection is unchanged**: it was
+> held by the two gates below before this correction and it is held by the same two now. Proved,
+> not asserted — `lint-prompt.mjs` returned `REJECT [GATE_NOT_RELEASED]` naming
+> `docs/audits/waste-map-location-backfill.md` both before and after this edit.
 
 **HUMAN LAYER RELEASED 2026-09-24 by Marco** ("Release the nine prompts", in chat), removed and
 recorded by `station-00.interactive-0004`. This is the reviewable diff the design asked for: the
 decision to make this slice armable now carries a name and a date instead of a judgement call at
-2am. The release clears ONE of the two layers. The three `requires_on_main` gates below are
+2am. The release clears ONE of the two layers. The two `requires_on_main` gates below are
 untouched and are still checked **even after arming** (`lint-prompt.mjs:808`,
 `ARMED_GATE_STILL_CHECKED`), so a measured reality still has to arrive before anything runs.
 
@@ -48,14 +62,13 @@ needed" got past it, and `arm-prompt.ps1` refused on the non-zero exit. That is 
 one line had to be a reviewable PR rather than a judgement call at 2am - and it is the PR you are
 reading.
 
-Underneath the marker, three `requires_on_main` gates encode the preconditions. They are checked
+Underneath the marker, two `requires_on_main` gates encode the preconditions. They are checked
 **even after arming** — `lint-prompt.mjs:808`, `ARMED_GATE_STILL_CHECKED`: *"a gate check gated on
 filename would strip the moment the prompt could actually run, which is precisely when the gate
 matters most."* So this is a runtime block, not a triage hint.
 
 | Gate | Releases when | Why it is the right probe |
 |---|---|---|
-| `backfill-waste-map-location-ids.mjs :: NO MATCH` | TIP-ID-S2 has landed | the predecessor exists at all |
 | `waste-map-location-backfill.md :: BACKFILL_UNMATCHED_ZERO` | a **real** `--apply` run wrote a receipt with **zero** unmatched rows | the token is written only on `unmatched === 0`; a partial backfill writes `BACKFILL_UNMATCHED_NONZERO` and this gate stays shut |
 | `STEP-11C-DONE.md :: ESTIMATE_WASTE_RATES_DROPPED` | 11c has actually dropped the legacy table | 🔴 the condition that cannot be inferred from this repo any other way |
 
@@ -64,7 +77,8 @@ failed once in this project: a **one-line stub** was enough to arm a destructive
 the gate checked existence rather than content. Every gate here carries a `::` needle, so an empty or
 placeholder marker releases nothing.
 
-🔴 **The third gate is the one that matters and the one that was prose until now.** Today production
+🔴 **The second gate (`STEP-11C-DONE.md`) is the one that matters and the one that was prose until
+now.** Today production
 prices from `legacy` — `RATES_CANONICAL_SOURCE` is set in no environment, so `app.config.ts:16`
 resolves unset to `legacy`. While that holds, `EstimateWasteRate` is the table that prices every job
 and this guard is protecting the thing that matters. **Removing it before the flip is option (c),
@@ -73,7 +87,7 @@ decision, and because its own precondition (a full real pricing cycle on `rateta
 met.
 
 **Marco released this slice on 2026-09-24** and the marker above was deleted in this PR, which is
-exactly the path this paragraph prescribed. The three gates still hold it until the receipt and the
+exactly the path this paragraph prescribed. The two gates still hold it until the receipt and the
 11c marker are genuinely on `main`. Both layers have to clear - a human intent, now given, and a
 measured reality, still pending.
 

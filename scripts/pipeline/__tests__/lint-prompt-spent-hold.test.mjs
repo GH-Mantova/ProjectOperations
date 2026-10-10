@@ -152,6 +152,23 @@ describe("checkSpentHoldPrOpen — superseded path present in open PR", () => {
 });
 
 describe("checkSpentHoldPrOpen — POSITIVE CONTROL: live premise, no matching open PR", () => {
+  test("non-HOLD prompt is never SPENT — fetchOpenPrs is never called", () => {
+    // Gate: if name does not end in -HOLD.md, return { ok: true } immediately without
+    // calling fetchOpenPrs. This test proves the short-circuit: the injected
+    // fetchOpenPrs THROWS, yet the result is { ok: true }.
+    const r = checkSpentHoldPrOpen({
+      scope: [
+        "scripts/pipeline/some-script.mjs",
+        "docs/pr-prompts/superseded/pr-foo-HOLD.md",
+      ],
+      promptPath: "docs/pr-prompts/pr-foo-ready.md",
+      fetchOpenPrs: () => { throw new Error("fetchOpenPrs must not be called for non-HOLD prompts"); },
+      name: "pr-foo-ready.md",
+    });
+    assert.deepStrictEqual(r, { ok: true },
+      "a non-HOLD prompt must be { ok: true } without calling fetchOpenPrs; got: " + JSON.stringify(r));
+  });
+
   test("PR with unrelated files → ok (prompt still ADMITs)", () => {
     const r = checkSpentHoldPrOpen({
       scope: [

@@ -859,6 +859,10 @@ function checkOrphanedDischarge(promptName, repoRoot) {
  * @returns {{ok: true}} | {{ok: false, code: "SPENT_HOLD_PR_OPEN"|"GH_OPEN_PRS_UNAVAILABLE", msg: string}}
  */
 export function checkSpentHoldPrOpen({ scope, promptPath, fetchOpenPrs, name }) {
+  // Only HOLDs can be "spent" in this sense — non-HOLD prompts skip this check entirely
+  // (and never call fetchOpenPrs, so no gh shell-out occurs in tests or CI).
+  if (!name.endsWith('-HOLD.md')) return { ok: true };
+
   const scopeList = Array.isArray(scope) ? scope : (scope != null && scope !== "" ? [scope] : []);
 
   // Normalise all scope paths to forward slashes, no leading ./ or /.

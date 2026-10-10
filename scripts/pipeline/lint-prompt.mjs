@@ -823,6 +823,175 @@ function checkOrphanedDischarge(promptName, repoRoot) {
 }
 
 // ---------------------------------------------------------------------------
+// SPENT_HOLD_PR_OPEN: a HOLD whose own work is already in an open PR
+// ---------------------------------------------------------------------------
+
+/**
+ * SPENT_HOLD_PR_OPEN — a prompt is SPENT when an open PR already carries its work.
+ *
+ * THE DEFECT THIS CLOSES. lint-prompt.mjs evaluates the premise against origin/main,
+ * which is right for a prompt that has never run. It is WRONG for a prompt whose PR is
+ * open and unmerged: the premise describes a condition the open PR fixes, so until the PR
+ * merges the premise is still true on main and the prompt lints ADMIT — re-armable, when
+ * it must never be re-armed.
+ *
+ * SPENT DEFINITION. A prompt P is spent when an open PR Q satisfies EITHER:
+ *   (a) Q's changed files contain the prompt's own retirement path under superseded/
+ *       (the path each prompt's `scope` names as its self-retirement entry, per PROMPT-SCHEMA);
+ *   (b) Q's changed files contain every non-prompt path in P's `scope` (i.e., every scope entry
+ *       that does NOT live under `docs/pr-prompts/superseded/`).
+ *
+ * FAIL LOUD on gh failure / empty return. Unlike `requires_merged` (which fails SAFE so a broken
+ * network never bins real work), this check must FAIL LOUD. The two failure modes are:
+ *   - gh is down   → can't tell if a spent PR exists → REJECT with GH_OPEN_PRS_UNAVAILABLE
+ *   - gh returns [] → could be "no open PRs" OR "gh is broken" → same REJECT
+ * DOCTRINE 7: a tool that cannot run must FAIL LOUD, never fail quiet.
+ * DOCTRINE 9.6: zero open PRs must not be indistinguishable from gh being down.
+ *
+ * The function is pure over an injected `fetchOpenPrs` so it is unit-testable without gh.
+ * The CLI injects `ghFetchOpenPrs` which honours `LINT_GH_OPEN_PRS_BIN`.
+ *
+ * @param {object}   args
+ * @param {string[]} args.scope         raw fm.scope array
+ * @param {string}   args.promptPath    the path of the prompt file itself (for superseded check)
+ * @param {function} args.fetchOpenPrs  () => [{number, files:[{path}]}]; may throw
+ * @param {string}   args.name          prompt basename, for messages
+ * @returns {{ok: true}} | {{ok: false, code: "SPENT_HOLD_PR_OPEN"|"GH_OPEN_PRS_UNAVAILABLE", msg: string}}
+ */
+export function checkSpentHoldPrOpen({ scope, promptPath, fetchOpenPrs, name }) {
+  const scopeList = Array.isArray(scope) ? scope : (scope != null && scope !== "" ? [scope] : []);
+
+  // Normalise all scope paths to forward slashes, no leading ./ or /.
+  const norm = (p) => String(p == null ? "" : p)
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "");
+
+  // The prompt's own superseded path: any scope entry under docs/pr-prompts/superseded/.
+  const supersededEntries = scopeList
+    .map(norm)
+    .filter((p) => p.startsWith("docs/pr-prompts/superseded/"));
+
+  // Non-prompt scope entries: everything NOT under docs/pr-prompts/superseded/.
+  const workEntries = scopeList
+    .map(norm)
+    .filter((p) => !p.startsWith("docs/pr-prompts/superseded/") && p !== "");
+
+  // If scope has no entries at all, skip — nothing to check.
+  if (supersededEntries.length === 0 && workEntries.length === 0) return { ok: true };
+
+  // Fetch open PRs. FAIL LOUD on any failure: an empty board and a broken gh are
+  // indistinguishable here, so neither must silently ADMIT.
+  let openPrs;
+  try {
+    openPrs = fetchOpenPrs();
+  } catch (err) {
+    return {
+      ok: false,
+      code: "GH_OPEN_PRS_UNAVAILABLE",
+      msg:
+        "GH_OPEN_PRS_UNAVAILABLE: could not fetch open PRs to check whether this prompt's work\n" +
+        "        is already in flight (" + (err && err.message ? err.message : String(err)) + ").\n" +
+        "        DOCTRINE 7: a tool that cannot run must FAIL LOUD, never fail quiet.\n" +
+        "        Fix gh authentication / connectivity, then re-run lint.",
+    };
+  }
+
+  // DOCTRINE 9.6: zero open PRs must not be indistinguishable from gh being down.
+  // A genuinely empty board is indistinguishable from a broken gh — both return [].
+  // FAIL LOUD so the operator knows the check was not evaluated.
+  if (!Array.isArray(openPrs) || openPrs.length === 0) {
+    return {
+      ok: false,
+      code: "GH_OPEN_PRS_UNAVAILABLE",
+      msg:
+        "GH_OPEN_PRS_UNAVAILABLE: gh returned no open PRs (empty list or non-array).\n" +
+        "        DOCTRINE 9.6: zero open PRs must not be indistinguishable from gh being down.\n" +
+        "        If the board is genuinely empty this check cannot be satisfied — and a board\n" +
+        "        with one ADMIT and nothing else is exactly the failure mode this gate closes.\n" +
+        "        Fix gh authentication / connectivity, then re-run lint.",
+    };
+  }
+
+  // Check each open PR.
+  for (const pr of openPrs) {
+    const prNum = pr && pr.number;
+    const prFiles = Array.isArray(pr && pr.files) ? pr.files : [];
+    const prPaths = new Set(
+      prFiles
+        .map((f) => (typeof f === "string" ? f : (f && f.path)))
+        .filter((p) => typeof p === "string")
+        .map(norm)
+    );
+
+    // Check (a): the PR contains the prompt's own superseded/ retirement path.
+    for (const sp of supersededEntries) {
+      if (prPaths.has(sp)) {
+        return {
+          ok: false,
+          code: "SPENT_HOLD_PR_OPEN",
+          msg:
+            "SPENT_HOLD_PR_OPEN: this prompt's own retirement path is already in open PR #" + prNum + ".\n" +
+            "        The prompt is spent: PR #" + prNum + " already carries this work.\n" +
+            "        Wait for PR #" + prNum + " to merge (the premise will then be dead and lint REJECTs it as STALE),\n" +
+            "        or close PR #" + prNum + " if the work needs to be re-done.\n" +
+            "        Do NOT arm this prompt while its own PR is open.",
+        };
+      }
+    }
+
+    // Check (b): the PR contains every non-prompt scope entry.
+    if (workEntries.length > 0 && workEntries.every((p) => prPaths.has(p))) {
+      return {
+        ok: false,
+        code: "SPENT_HOLD_PR_OPEN",
+        msg:
+          "SPENT_HOLD_PR_OPEN: every non-prompt scope entry is already in open PR #" + prNum + ".\n" +
+          "        The prompt is spent: PR #" + prNum + " already carries this work.\n" +
+          "        Wait for PR #" + prNum + " to merge (the premise will then be dead and lint REJECTs it as STALE),\n" +
+          "        or close PR #" + prNum + " if the work needs to be re-done.\n" +
+          "        Do NOT arm this prompt while its own PR is open.",
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Default fetchOpenPrs implementation for the CLI. Calls gh and returns the
+ * parsed JSON. Throws on any failure (exit code, spawn error, parse error).
+ *
+ * Honours LINT_GH_OPEN_PRS_BIN (takes precedence) then falls back to the bare
+ * "gh" on PATH. DOES NOT fall back to LINT_GH_BIN deliberately: LINT_GH_BIN is
+ * used by ghFetchPrState to stub `gh pr view` in requires_merged unit tests, and
+ * those stubs return `{"state":"..."}` — a single object, not the array that
+ * `gh pr list` returns. Falling back to LINT_GH_BIN would make the two checks
+ * fight over the same binary and one would always receive the wrong shape.
+ *
+ * `gh pr list` needs to run from inside the git repo so it can auto-detect the
+ * remote. We resolve the repo root from this module's location — the same
+ * approach readFromOriginMain uses — so a foreign-cwd invocation still reaches
+ * the right repo.
+ */
+function ghFetchOpenPrs() {
+  const gh = process.env.LINT_GH_OPEN_PRS_BIN || "gh";
+  // Resolve repo root from this module's location (scripts/pipeline/lint-prompt.mjs
+  // is two levels below the root). gh pr list auto-detects the repo from git remote,
+  // so it must run from inside the repo tree, not from a foreign cwd.
+  const ghRepoRoot = fileURLToPath(new URL("../../", import.meta.url));
+  const out = execFileSync(gh, ["pr", "list", "--state", "open", "--limit", "100", "--json", "number,files"], {
+    cwd: ghRepoRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf-8",
+    timeout: 30000,
+    shell: process.platform === "win32",
+  });
+  return JSON.parse(out);
+}
+
+// ---------------------------------------------------------------------------
 // MODULE PROVENANCE SLICE 1: which module does this prompt belong to?
 //
 // WHY: [MEASURED 2026-09-01, origin/main b30e166a] across the last 40 merged PRs there are 24
@@ -2422,6 +2591,27 @@ export function lint(file, opts) {
     if (!modRes.ok) return fail(modRes.code, modRes.msg);
     if (modRes.warnings && modRes.warnings.length) warnings.push(...modRes.warnings);
     moduleResult = modRes;
+  }
+
+  // SPENT_HOLD_PR_OPEN — placed last, after premise evaluation and module provenance,
+  // so an already-REJECTed prompt keeps its more specific code (PREMISE_INVALID,
+  // GATE_NOT_RELEASED, MISSING_STANDING_AUTHORITY, etc.) and only ADMIT-bound prompts
+  // reach this check.
+  //
+  // FAIL LOUD on gh failure / empty return: DOCTRINE 7 (a tool that cannot run must FAIL
+  // LOUD, never fail quiet) and DOCTRINE 9.6 (zero open PRs must not be indistinguishable
+  // from gh being down). This is the OPPOSITE of requires_merged (which fails SAFE); the
+  // difference is intentional — a broken instrument here cannot safely ADMIT, because the
+  // whole point of this check is to catch the one case where ADMIT is wrong.
+  {
+    const fetchOpenPrs = (opts && opts.fetchOpenPrs) || ghFetchOpenPrs;
+    const spentRes = checkSpentHoldPrOpen({
+      scope: fm.scope,
+      promptPath: file,
+      fetchOpenPrs,
+      name,
+    });
+    if (!spentRes.ok) return fail(spentRes.code, spentRes.msg);
   }
 
   return {

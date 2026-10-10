@@ -362,3 +362,98 @@ rebuild on a PR that cannot merge.
 - **Left this breadcrumb inside this run's own PR** rather than loose in the dev tree, so no
   `sweep-breadcrumbs.ps1` pass is needed and it cannot block the next fast-forward. The worktree is
   torn down at the end of the run.
+
+---
+
+## ADDENDUM — measured after the breadcrumb was first committed (35af3e65), same run
+
+### F8 — dot-sourcing `pipeline-lib.ps1` SILENTLY CLOBBERS a caller variable named `$workTree`, and `Invoke-GitPush` then pushes nothing while naming a tree you never chose
+
+[MEASURED] 2026-10-10T02:27Z. My push script set `$workTree = 'C:\po-wt\st00-0214-board'`, then dot-sourced
+`scripts/pipeline/pipeline-lib.ps1`, then called
+`Invoke-GitPush -Branch $st00Branch -WorkTree $workTree`. It threw:
+
+```
+Invoke-GitPush: WorkTree does not exist: C:\po-fix
+```
+
+`C:\po-fix` is a path my script never mentions. The library assigns its own `$workTree` at
+dot-source time, and because **PowerShell variables are case-insensitive and dot-sourcing runs in
+the caller's scope**, the library's value replaced mine between the assignment and the call. Proved
+by printing both after the dot-source: the library's `$workTree` = `C:\po-fix`; a freshly named
+`$st00BoardTree` = `C:\po-wt\st00-0214-board`. The same call with the distinct name returned
+`PUSH_RESULT=35af3e65`, and `git ls-remote origin refs/heads/docs/board-0214-collect` = local `HEAD`
+= `35af3e65`.
+
+This is DOCTRINE §9.1's *"PowerShell variables are CASE-INSENSITIVE — never reuse single letters
+like `$c`/`$C`"* one level up: the hazard is not short names, it is **any name the dot-sourced
+library also uses**, and the library's variables are not documented at its call site. It failed
+LOUDLY here only because `GITPUSH_WORKTREE_MANDATORY_V1` (added 2026-10-07, F10) tests the tree
+before `Push-Location`. Without that guard this is the §7 shape exactly: every git call would have
+run against an ambient directory, returned a well-formed SHA and exited 0, proving nothing — which
+is the failure that guard was written for, arriving by a different route than the missing-argument
+one it anticipated.
+
+→ **ACTIONED** for this run (distinct variable name, push read back from the remote). The durable
+half is a one-line warning at `Invoke-GitPush`'s call-site documentation — *"name your tree variable
+something the library does not use; dot-sourcing runs in your scope"* — but `pipeline-lib.ps1` is
+the **first entry on the instrument lane's NEVER-LIST**, so a station cannot land that edit without
+Marco, and a prompt targeting only that file would reach 13/15 green and be un-mergeable
+(`NEVER_LIST_BEFORE_ARMING_V1`, measured on #2261). I have therefore NOT staged a prompt for it.
+RULE 1: the complete-and-additive fix is the comment plus a `Set-StrictMode`-style guard that makes
+the library declare its locals in a function scope rather than at file scope — it fixes every current
+and future caller and changes no behaviour; renaming the library's `$workTree` alone fixes today and
+re-breaks on the next shared name. **DEFERRED to Marco's never-list decision**, not re-escalated as a
+separate question, because it is the same lane interaction already open as F77 / #2261.
+
+### F9 — the arm WAS consumed; an armed prompt's mtime is not evidence either way
+
+[MEASURED] At 02:29:20Z, ten minutes after the arm, `pr-lint-prompt-refuse-a-hold-whose-pr-is-open-ready.md`
+was still on disk with `mtimeUTC=2026-10-10T01:34:08Z` — **older than the arm itself**, because
+`git mv` preserves mtime — and `processed/` held nothing newer than `rev-2301-ready.md.log` at
+01:37Z. Read naively that says the watcher never saw it.
+
+It did. Measured properly: the watcher resolved **by command line, never by image name**
+(DOCTRINE §9.5 — 19 `node.exe` processes were alive) is pid **16148**, running
+`C:\po-watcher\ProjectOperations\scripts\pr-watcher\index.mjs`; and its own
+`scripts/pr-watcher/.queue-state.json`, mtime **02:25:14Z** (i.e. after the 02:19:21Z arm), reads:
+
+```json
+{ "ts": "2026-10-10T02:25:14.928Z", "lane": null, "lanes": 2,
+  "armed": 1, "owned": 1, "deferred": [], "runnable": 1, "conflictedPrs": [1960] }
+```
+
+`armed: 1, owned: 1, runnable: 1` — the prompt is claimed and in flight. The ready file stays on disk
+until the build finishes and moves it to `processed/`, so its continued presence is the expected
+mid-build state, not a miss.
+
+→ **ACTIONED** — recorded so the next run does not re-diagnose this. **Two readings that look like
+"the arm was lost" and are not:** a `-ready.md` whose mtime predates the arm (`git mv` keeps mtime),
+and an empty `processed/` during the build. The authoritative instrument is the watcher clone's
+`.queue-state.json`, and the authoritative way to find the watcher is its command line.
+**Next Station 00: confirm the PR this build opens, and label it `do-not-merge`** per F1 — the prompt
+carries `escalates: false`, so nothing else will.
+
+### F10 — dev-tree tidy, recorded because it removed a file
+
+After #2302 was pushed, the dev tree held an **untracked** file at
+`docs/pr-prompts/needs-marco/discharged/stations-00-03-05-have-not-fired-for-nine-to-eleven-days-2026-10-06.md`
+— the destination of F4's retirement, created there because `retire-escalation.mjs` refuses
+`--record-into` equal to `--repo` and so must move the file in the dev tree. An untracked file at a
+path an incoming fast-forward must create is precisely what makes `git merge --ff-only` refuse, while
+`--numstat` and `--cached` both read EMPTY (the documented PASS reading) — the trap the station doc
+warns about, arriving from the retirement path rather than from a breadcrumb.
+
+I removed it, and only after proving the content survives elsewhere: `git hash-object` of the local
+file = `fa07123f2a92816fe8de0ff083cc6a44ca875340` = `git rev-parse HEAD:<the old needs-marco path>`,
+and the identical blob is committed in #2302 at the `discharged/` path (worktree and dev-tree copies
+also compared by SHA-256, `IDENTICAL=True`). So this removed a transient duplicate, not an artifact —
+*"nothing is ever deleted"* is intact: the escalation exists on the branch at its new path, plus a
+tracked discharge note.
+
+Dev tree after the tidy, `git status --porcelain` (tracked lines only): `M sweep-rotation.json`,
+`M .arming-log.txt`, `D needs-marco/stations-…-2026-10-06.md`, `D pr-lint-prompt-…-HOLD.md`. The two
+`M`s and the first `D` are byte-identical to what #2302 commits, so the fast-forward has nothing to
+overwrite; the second `D` is the live arm and must stay until the watcher moves the ready file to
+`processed/`. `git rev-list --left-right --count HEAD...origin/main` → `0 0`.
+→ **ACTIONED** — verified by hash before removal, and the resulting dev-tree state enumerated above.

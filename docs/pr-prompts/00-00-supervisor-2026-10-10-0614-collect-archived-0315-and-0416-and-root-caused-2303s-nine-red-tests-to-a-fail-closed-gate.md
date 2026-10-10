@@ -369,6 +369,51 @@ are the read-back, not the claim. Recorded here rather than filed, because neith
 a shared instrument — they are the two shapes a station's own script takes when it skips read-back,
 and the next run inherits them from this breadcrumb.
 
+### F13 — I archived a breadcrumb that was ALREADY TRACKED at the queue root, and briefly left the dev tree holding a tracked deletion
+
+Recorded against myself, in the same cycle, because the next run would otherwise meet it as an
+unexplained fast-forward blocker.
+
+**[MEASURED] what I got wrong.** 0416 was **untracked** (`check-breadcrumb.mjs` said so:
+`NOTE … is UNTRACKED — it reaches nobody until a board PR commits it`). **0315 was not** — it got
+no such NOTE, because board PR #2304 had already committed it at the **queue root**. I read the
+NOTE's absence as nothing and copied both into `archive/`. After #2305 merged,
+`git cat-file -e origin/main:<root path>` -> **exit 0** and
+`git cat-file -e origin/main:docs/pr-prompts/archive/<same name>` -> **exit 0**, with
+`rev-parse` showing the **same blob** on both. One artifact, two homes — §10.5.
+
+**[MEASURED] and the cleanup made it worse before it made it better.** My teardown removed the
+dev tree's root copy on the strength of *"the content is safe under `archive/`"* — true, but that
+copy was **tracked**, so `git status --porcelain --untracked-files=no` then read
+` D docs/pr-prompts/00-00-supervisor-…-0315-….md`. That is precisely the blocker the station doc
+warns about: `rev-list --left-right --count` read `0 0` and `--cached` read EMPTY, both of which
+are the documented PASS readings, and **only the fourth control caught it.**
+
+**DISPOSITION: ACTIONED**, in two steps, both read back:
+
+1. **Dev tree restored.** The deleted tracked path was rewritten from `HEAD` with the node
+   raw-Buffer write **through the CRLF branch** — 0315's own F2 measured that the LF branch leaves
+   a text path reading ` M` in this repo — then `git update-index --refresh`, then the per-path
+   porcelain, which is the reading that counts: `porcelain for that path: ''`. I did **not** use
+   `git checkout -- <path>` (forbidden) or `git clean`.
+2. **Duplicate retired by PR**, not by a local delete: this PR `git rm`s the **root** copy and
+   leaves `archive/` as the single home, which is what the archive move should have been in one
+   step. Read back in the worktree before commit: `root-gone-from-worktree=True`,
+   `archive-copy-still-there=True`.
+
+**The lesson is one line, and it is cheap:** `check-breadcrumb.mjs`'s `NOTE … is UNTRACKED` is
+load-bearing in **both** directions — its presence says "commit me", and **its absence says "I am
+already tracked, so archiving me is a `git mv`, never a copy."** Ask
+`git ls-files -- docs/pr-prompts/<name>` before archiving, the same way the station doc already
+tells you to ask it before appending under `needs-marco/`.
+
+**One thing left for the next run, and it is not mine:** the dev tree holds
+` M docs/pipeline/sweep-rotation.json` (`last_index 3 -> 0`, `last_run_utc 2026-10-10T06:24:09Z`,
+`last_station 04-scanner`) — Station **04**'s rotation state, advanced in the shared tree at
+06:24Z and left uncommitted. It did not block this run's fast-forward because no PR landed that
+path, but **it will block the first FF after one does.** It is 04's state and belongs in 04's own
+PR; I did not commit, revert or restore it.
+
 ## WHAT I DID NOT DO
 
 - **Did not arm anything** (F8). `armed: 0` before and after. `lint-prompt.mjs` is mid-change in

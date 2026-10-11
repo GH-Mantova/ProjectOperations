@@ -71,8 +71,12 @@ Doc version and bootstrap AGREE. This run was not read-only.
    dev tree, batching the eleven untracked breadcrumbs plus this one onto a single branch and
    opening ONE PR. The exact branch, file count and PR number are recorded in this run's chat
    report; this file is inside that PR, which is why it cannot name its own PR number.
-2. **A board lease was taken and released** around that mutation.
-3. **Nothing was armed, merged, labelled, update-branched or escalated to a scheduled task.**
+2. **Station 04's dispatched rotation-state commit landed.**
+   `docs/pipeline/sweep-rotation.json` went onto
+   `chore/commit-station-04-sweep-rotation-state` as a one-file commit and **PR #2313**, read back
+   after creation (`gh pr create` returned the URL; the branch tracks origin).
+3. **A board lease was taken and released** around both mutations.
+4. **Nothing was armed, merged, labelled, update-branched or escalated to a scheduled task.**
    No `do-not-merge` label was removed. No `gh pr update-branch` was called on either open PR -
    both are BEHIND, and neither was a merge candidate, so updating them would have cost a full CI
    rebuild for nothing (UPDATE_AT_MERGE_TIME_V1).
@@ -171,13 +175,14 @@ tightening to compare the comment against the file.
   "a cancelled call" to "any CIM failure") - **DEFERRED**, agreeing with 04. Already with Marco.
 - **04 F3** (the sweep did not complete in 773 s) - **ACTIONED as corroboration**: mine ran 25 min.
   Same defect, fourth occurrence, recorded in F3 above.
-- **04 F4** (the rotation file arrived dirty; 00's to commit) - **DEFERRED to the next 00 run, with
-  the reason stated so it is not rediscovered.** `sweep-breadcrumbs.ps1` never stages a tracked file
-  by construction, so the one primitive sanctioned for this job cannot carry it. Folding it into
-  this run's PR would have meant hand-rolling the branch instead of using the primitive, which
-  DOCTRINE 1 forbids for exactly the reason that keeps biting here. It is content-trivial
-  (`last_index` 3 -> 1) and it does block the next fast-forward, so the next run should put it on a
-  worktree branch of its own.
+- **04 F4** (the rotation file arrived dirty; 00's to commit) - **ACTIONED.**
+  `sweep-breadcrumbs.ps1` never stages a tracked file by construction, so the breadcrumb sweep could
+  not carry it and there is no board primitive that commits a tracked file. The station contract
+  names the path for exactly this case - branch, commit, PR - so it went on
+  `chore/commit-station-04-sweep-rotation-state` as its own one-file commit and **PR #2313**, read
+  back after creation. Content was rotation state only (`last_index` 3 -> 1,
+  `last_run_utc` -> `2026-10-11T14:21:00Z`). The dev tree's next fast-forward is no longer blocked
+  by a tracked modification.
 - **04 F5** (two of the 16 depth-1 `-HOLD` prompts describe work already in an open PR; 00 may mark
   them superseded) - **DEFERRED, deliberately.** Marking a prompt superseded is a queue mutation,
   and #2303 - the PR that makes this mechanical - is itself one of the two PRs waiting on Marco.
@@ -233,4 +238,6 @@ is F2's clock question. Four asks about one incident is already too many; I am n
 - **I did not touch Azure, Entra, SharePoint, production data, or any scheduled task.**
 - **I did not archive the twelve breadcrumbs.** They must be tracked before `git mv` is meaningful.
   Next run.
-- **I did not commit `docs/pipeline/sweep-rotation.json`.** Reason stated in F6, next run named.
+- **I did not merge #2312 or #2313, my own two PRs.** Neither has a review verdict for its head and
+  the CP-26 receipt question for a docs-only sweep is not one I settled this run; they are left
+  OPEN for the next occurrence to drive green and merge on the normal rules.

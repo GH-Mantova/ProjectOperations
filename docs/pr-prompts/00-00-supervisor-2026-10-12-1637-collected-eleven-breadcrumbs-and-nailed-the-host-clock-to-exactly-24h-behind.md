@@ -116,6 +116,14 @@ stamps a filename from `Get-Date` on that host writes a date one day early, and
 proposed 10 h Brisbane-offset mechanism is REFUTED: the offset is 24 h, not 10 h, and it is a date
 error rather than a timezone error.
 
+[MEASURED] **The skew cuts both ways, and the second direction is the dangerous one.** After this
+run's breadcrumb landed, `--freshness` re-read as `00 last 2026-10-12T16:37:00Z, -23.7h ago, ok`.
+Because I stamped the TRUE date while the comparison clock is a day behind, **station 00 will read
+`ok` for the next 23 hours no matter what happens to it** - a station could miss every occurrence
+tomorrow and the freshness instrument would stay green. A host-stamped filename makes a station look
+a day stale; a correctly-stamped one makes it look a day fresh. Neither is a readable instrument,
+and the second one fails silent.
+
 I did not fix it. Setting a clock on Marco's PC is a host-level system change and not mine
 (DOCTRINE 5). **ESCALATED** - to Marco, as one question with the complete-and-additive option
 first (RULE 1):

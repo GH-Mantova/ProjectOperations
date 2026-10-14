@@ -41,7 +41,11 @@ module: global-lists
 STANDING AUTHORITY to finish the work, commit, push, and OPEN THE PR. Do not ask.
 
 Marco approved the mock-up and this spec on 2026-10-03. Tag new code with `LIST_ITEM_RENAME_V1`.
-The approved mock-up is at the `design_ref` path (local and gitignored). Follow it; do not commit it.
+The approved mock-up is at the `design_ref` path. **Correction (2026-10-14):** this line previously
+read "(local and gitignored). Follow it; do not commit it." That was false — `.gitignore` un-ignores
+`Claude Design/proposed/`, so the path was always committable, and the instruction not to commit it
+is why this shipped work (#2242, #2245) has no design of record on `origin/main`. Follow the mock-up;
+it should be committed.
 
 ## Web: `GlobalListsSection.tsx`
 

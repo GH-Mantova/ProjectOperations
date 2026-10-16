@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+# Outgoing-commit check (Phase 1 one-folder migration, 2026-10-17).
+# Refuses a push if any commit being pushed adds or changes a path under
+# .local/ or a secret-like file (.env, *.pem, *.key, *.pfx, *.p12, *.token,
+# *-login.json; *.example is allowed). This catches what a skipped pre-commit
+# (`--no-verify`) let through. It is a second check, not a guarantee:
+# `git push --no-verify` skips it too.
+
+LOCALONLY_RE='(^|/)\.local/|(^|/)\.env(\.[^/]*)?$|\.(pem|key|pfx|p12|token)$|-login\.json$'
+ZERO=0000000000000000000000000000000000000000
+FOUND=""
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue   # branch deletion: nothing outgoing
+  if [ "$remote_sha" = "$ZERO" ]; then
+    commits=$(git rev-list "$local_sha" --not --remotes)
+  else
+    commits=$(git rev-list "$remote_sha..$local_sha")
+  fi
+  for c in $commits; do
+    hits=$(git diff-tree --no-commit-id --name-only -r --diff-filter=ACMR "$c" | grep -E "$LOCALONLY_RE" | grep -vE '\.example$' || true)
+    [ -n "$hits" ] && FOUND="$FOUND
+$c:
+$hits"
+  done
+done
+
+if [ -n "$FOUND" ]; then
+  echo "" >&2
+  echo "[pre-push] REFUSED: LOCAL-ONLY — outgoing commits contain files that must never leave this PC:" >&2
+  echo "$FOUND" | sed 's/^/    /' >&2
+  echo "" >&2
+  exit 1
+fi
+exit 0

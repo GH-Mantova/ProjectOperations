@@ -63,6 +63,25 @@ if [ "$NODRIFT_BRANCH" = "main" ] || [ "$NODRIFT_BRANCH" = "master" ]; then
 fi
 # --- end NO-DRIFT branch guard ---------------------------------------------
 
+# --- LOCAL-ONLY guard (Phase 1 one-folder migration, 2026-10-17) -----------
+# Refuse any commit that stages a path under .local/ (the machine-local folder:
+# worktrees, backups, secrets, company data) or a secret-like file (.env,
+# *.pem, *.key, *.pfx, *.p12, *.token, *-login.json; *.example is allowed).
+# This is a speed bump, not a security boundary: `git commit --no-verify`
+# skips it. .githooks/pre-push repeats the check on outgoing commits.
+LOCALONLY_RE='(^|/)\.local/|(^|/)\.env(\.[^/]*)?$|\.(pem|key|pfx|p12|token)$|-login\.json$'
+LOCALONLY_HITS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "$LOCALONLY_RE" | grep -vE '\.example$' || true)
+if [ -n "$LOCALONLY_HITS" ]; then
+  echo "" >&2
+  echo "[pre-commit] REFUSED: LOCAL-ONLY — these staged files must never be committed:" >&2
+  echo "$LOCALONLY_HITS" | sed 's/^/    /' >&2
+  echo "" >&2
+  echo "  Unstage them with:  git restore --staged <path>" >&2
+  echo "" >&2
+  exit 1
+fi
+# --- end LOCAL-ONLY guard ---------------------------------------------------
+
 # AEST = UTC+10 fixed (Brisbane has no DST). Use TZ=Australia/Brisbane.
 NOW=$(TZ=Australia/Brisbane date '+%Y-%m-%d %H:%M AEST')
 

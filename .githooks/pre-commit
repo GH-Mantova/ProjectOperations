@@ -65,12 +65,18 @@ fi
 
 # --- LOCAL-ONLY guard (Phase 1 one-folder migration, 2026-10-17) -----------
 # Refuse any commit that stages a path under .local/ (the machine-local folder:
-# worktrees, backups, secrets, company data) or a secret-like file (.env,
-# *.pem, *.key, *.pfx, *.p12, *.token, *-login.json; *.example is allowed).
+# worktrees, backups, secrets, company data; no exceptions) or a secret-like
+# file. The rule lives in .githooks/local-only.sh, shared with pre-push.
 # This is a speed bump, not a security boundary: `git commit --no-verify`
 # skips it. .githooks/pre-push repeats the check on outgoing commits.
-LOCALONLY_RE='(^|/)\.local/|(^|/)\.env(\.[^/]*)?$|\.(pem|key|pfx|p12|token)$|-login\.json$'
-LOCALONLY_HITS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "$LOCALONLY_RE" | grep -vE '\.example$' || true)
+# If the rule file is missing or Git cannot list the staged files, the commit
+# is refused (fail closed).
+. "$(dirname "$0")/local-only.sh"
+LOCALONLY_STAGED=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR) || {
+  echo "[pre-commit] REFUSED: could not list the staged files, so the LOCAL-ONLY check could not run." >&2
+  exit 1
+}
+LOCALONLY_HITS=$(printf '%s\n' "$LOCALONLY_STAGED" | localonly_filter)
 if [ -n "$LOCALONLY_HITS" ]; then
   echo "" >&2
   echo "[pre-commit] REFUSED: LOCAL-ONLY — these staged files must never be committed:" >&2

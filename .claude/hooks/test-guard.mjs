@@ -6,7 +6,8 @@
  *   B. It ALLOWS every command the watcher and the stations actually run.
  *
  * (B) is why the previous version of this hook was thrown away without ever running: it denied git
- * inside C:\po-watcher, where the watcher's own agents WORK. It would have bricked the queue on the
+ * inside the watcher clone (then C:\po-watcher, now C:\ProjectOperations2\.local\tools\po-watcher),
+ * where the watcher's own agents WORK. It would have bricked the queue on the
  * first run. A guard that stops the pipeline is not a safety feature, it is an outage.
  */
 import { execFileSync } from "node:child_process";
@@ -97,6 +98,27 @@ expect('echo "do not touch azure"', false, "the word azure in a string");
 expect('git log --oneline | grep 552', false, "552 in a NON-merge command");
 expect('gh pr view 552 --json state', false, "READING #552 is fine — only merging is blocked");
 expect('cat docs/pipeline/DOCTRINE.md', false, "reading the doctrine that mentions all of this");
+
+console.log("\n=== MUST BLOCK — ONE_FOLDER (nothing for this project outside C:\\ProjectOperations2)");
+expect('git worktree add C:\\po-wt\\fix-1 -b fix/x origin/main', true, "worktree at the root of C:");
+expect('git -C C:\\ProjectOperations2 worktree add ..\\po-wt\\fix-1 -b fix/x origin/main', true, "relative path that escapes the one folder");
+expect('git worktree add "C:/temp-worktrees/x" origin/main', true, "forward slashes + quotes");
+expect('git clone https://github.com/GH-Mantova/ProjectOperations C:\\po-watcher\\clone2', true, "clone to the root of C:");
+expect('mkdir C:\\po-temp', true, "new folder at the root of C:");
+expect('New-Item -ItemType Directory -Force "C:\\scratch"', true, "New-Item folder at the root of C:");
+
+console.log("\n=== MUST ALLOW — ONE_FOLDER inside the one folder, or cannot be judged");
+expect('git -C C:\\ProjectOperations2 worktree add .local\\worktrees\\fix-1 -b fix/x origin/main', false, "worktree in .local\\worktrees (relative)");
+expect('git worktree add C:\\ProjectOperations2\\.local\\worktrees\\fix-1 -b fix/x origin/main', false, "worktree in .local\\worktrees (absolute)");
+expect('git worktree add ../fix-1 origin/main', false, "relative with no known base: fail open");
+expect('git worktree list', false, "listing worktrees");
+expect('git clone https://github.com/x/y D:\\y', false, "clone to another drive");
+expect('mkdir C:\\ProjectOperations2\\.local\\logs', false, "folder inside the one folder");
+expect('git -C C:\\ProjectOperations2\\.local\\worktrees\\fix-1 reset --hard origin/main', false, "reset in a .local worktree (not the dev tree)");
+expect('git -C C:\\ProjectOperations2\\.local\\tools\\po-watcher\\ProjectOperations reset --hard origin/main', false, "reset in the watcher clone at its new place");
+
+console.log("\n=== MUST BLOCK — DEVTREE_RESET still bites at the top level");
+expect('git -C C:\\ProjectOperations2 reset --hard origin/main', true, "reset in the shared dev tree itself");
 
 console.log(`\n=== ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

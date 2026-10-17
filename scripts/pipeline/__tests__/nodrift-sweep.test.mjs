@@ -60,9 +60,12 @@ function makeRepo() {
   const hookDst = join(dir, ".githooks", "pre-commit");
   copyFileSync(HOOK_SRC, hookDst);
   chmodSync(hookDst, 0o755);
+  // pre-commit sources its LOCAL-ONLY rule from this shared file (2026-10-17) and
+  // refuses every commit when it is missing (fail closed), so the copy needs both.
+  copyFileSync(join(REPO_ROOT, ".githooks", "local-only.sh"), join(dir, ".githooks", "local-only.sh"));
 
   writeFileSync(join(dir, "seed.txt"), "seed\n");
-  git("add", "seed.txt", ".githooks/pre-commit");
+  git("add", "seed.txt", ".githooks/pre-commit", ".githooks/local-only.sh");
   // --no-verify on the seed commit: the guard is not armed until hooksPath is set,
   // but being explicit keeps the seed independent of hook behaviour.
   git("commit", "--no-verify", "-m", "init");

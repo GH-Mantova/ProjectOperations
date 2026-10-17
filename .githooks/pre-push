@@ -1,0 +1,56 @@
+#!/usr/bin/env sh
+# Outgoing-commit check (Phase 1 one-folder migration, 2026-10-17).
+# Refuses a push if any commit being pushed adds or changes a path under
+# .local/ or a secret-like file. The rule lives in .githooks/local-only.sh,
+# shared with pre-commit. This catches what a skipped pre-commit
+# (`--no-verify`) let through. It is a second check, not a guarantee:
+# `git push --no-verify` skips it too.
+#
+# Every outgoing commit is inspected, including:
+#   - a FIRST commit (no parent): `--root` lists its files as added;
+#   - a MERGE commit: `-m` lists its changes against each parent, so a file
+#     slipped in while resolving the merge is seen.
+# FAIL CLOSED: if Git cannot list the outgoing commits or a commit's files,
+# the push is refused rather than waved through.
+
+. "$(dirname "$0")/local-only.sh"
+
+refuse_uninspectable() {
+  echo "" >&2
+  echo "[pre-push] REFUSED: could not inspect the outgoing commits ($1)." >&2
+  echo "  Nothing was pushed. Fix the cause and push again." >&2
+  echo "" >&2
+  exit 1
+}
+
+is_zero() { case "$1" in *[!0]*) return 1 ;; *) return 0 ;; esac; }
+
+FOUND=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
+  is_zero "$local_sha" && continue                 # branch deletion: nothing outgoing
+  if ! is_zero "$remote_sha" && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    commits=$(git rev-list "$remote_sha..$local_sha") || refuse_uninspectable "rev-list $remote_sha..$local_sha"
+  else
+    # New branch, or the remote's commit is not on this PC: everything not
+    # already on a known remote is outgoing.
+    commits=$(git rev-list "$local_sha" --not --remotes) || refuse_uninspectable "rev-list $local_sha"
+  fi
+  for c in $commits; do
+    files=$(git -c core.quotePath=false diff-tree --root -m -r --no-commit-id --name-only --diff-filter=ACMR "$c") \
+      || refuse_uninspectable "diff-tree $c"
+    hits=$(printf '%s\n' "$files" | localonly_filter | sort -u)
+    [ -n "$hits" ] && FOUND="$FOUND
+$c:
+$hits"
+  done
+done
+
+if [ -n "$FOUND" ]; then
+  echo "" >&2
+  echo "[pre-push] REFUSED: LOCAL-ONLY — outgoing commits contain files that must never leave this PC:" >&2
+  echo "$FOUND" | sed 's/^/    /' >&2
+  echo "" >&2
+  exit 1
+fi
+exit 0

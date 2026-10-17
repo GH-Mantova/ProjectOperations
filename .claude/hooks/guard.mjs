@@ -11,7 +11,8 @@
  *
  *   1. DENY-ONLY. NEVER `ask`. An ask-prompt in a headless run hangs the queue forever - that is
  *      exactly why the first version of this hook was thrown away before it ever ran.
- *   2. DENY NARROWLY. An earlier draft denied git inside C:\po-watcher - where the watcher's own
+ *   2. DENY NARROWLY. An earlier draft denied git inside the watcher clone (then C:\po-watcher,
+ *      now C:\ProjectOperations2\.local\tools\po-watcher) - where the watcher's own
  *      agents WORK. It would have bricked the queue on the first run. Agents keep full git, full gh,
  *      full filesystem. We block only IRREVERSIBLE, SHARED-BLAST-RADIUS damage.
  *   3. FAIL OPEN ON OUR OWN BUGS. If this hook throws, it must ALLOW. A broken guard that blocks
@@ -22,7 +23,7 @@
  */
 
 import { readFileSync, existsSync, appendFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -178,8 +179,9 @@ for (const rx of FORCE_MAIN) {
 //    Correct instrument: `git fetch` + `git merge --ff-only`. A refusal from `--ff-only` is
 //    information (the tree has diverged), not an obstacle.
 //
-//    Blast radius guarded: the shared dev tree top-level ONLY. Worktrees, C:\po-watcher, and
-//    everywhere else keep `reset` - legitimate feature-branch rewinds and rebases still work.
+//    Blast radius guarded: the shared dev tree top-level ONLY. Worktrees, the watcher clone
+//    (.local\tools\po-watcher, formerly C:\po-watcher), everything under .local\, and everywhere
+//    else keep `reset` - legitimate feature-branch rewinds and rebases still work.
 // -----------------------------------------------------------------------------------------
 function isDevTree(pathStr) {
   if (!pathStr) return false;
@@ -188,6 +190,10 @@ function isDevTree(pathStr) {
   if (norm !== DEV && !norm.startsWith(DEV + "\\")) return false;
   // A worktree checked out under the dev tree is not "the dev tree" - allow.
   if (norm.includes("\\.claude\\worktrees\\")) return false;
+  // Everything under .local\ is machine-local, NOT the dev tree (2026-10-17 one-folder layout):
+  // .local\worktrees\<item> are feature worktrees and .local\tools\po-watcher\... is the watcher's
+  // own clone (formerly C:\po-watcher). `git reset` stays allowed there, exactly as before the move.
+  if (norm.startsWith(DEV + "\\.local\\")) return false;
   return true;
 }
 
@@ -222,9 +228,79 @@ if (cwdCandidates.some(isDevTree) && RESET_RE.test(command)) {
       "A refusal from `--ff-only` is INFORMATION, not an obstacle: it means the tree has diverged\n" +
       "and needs inspection before proceeding. Do NOT paper over it with `reset`.\n\n" +
       "This rule guards ONLY the shared dev tree top-level. `git reset` in a worktree, in\n" +
-      "C:\\po-watcher, or on a feature branch elsewhere is still allowed.\n\n" +
+      "anything under C:\\ProjectOperations2\\.local\\ (incl. the watcher clone), or on a feature\n" +
+      "branch elsewhere is still allowed.\n\n" +
       "Blocked: " + command.slice(0, 180)
   );
+}
+
+// -----------------------------------------------------------------------------------------
+// 5. ONE_FOLDER - nothing for this project is created outside C:\ProjectOperations2.
+//    (Marker token: ONE_FOLDER - do not remove.)
+//
+//    Phase 1 one-folder migration, 2026-10-17: 15 project folders and 39 repo copies had piled
+//    up at the root of C:. Worktrees now live in C:\ProjectOperations2\.local\worktrees. This
+//    rule blocks three NARROW things only:
+//      * `git worktree add <path>` whose path resolves outside C:\ProjectOperations2
+//      * `git clone ... <dir>` into a C: path outside C:\ProjectOperations2
+//      * mkdir / md / New-Item of a folder directly at the root of C: (C:\<name>)
+//    A relative path with no known base directory cannot be judged and is ALLOWED (fail open).
+//    This hook covers Claude only: Codex, manual commands and Windows tasks are not covered by
+//    it, which is why a separate read-only check watches the root of C: for new project folders.
+// -----------------------------------------------------------------------------------------
+const ONE_ROOT = "c:\\projectoperations2";
+const unq = (s) => String(s).replace(/^["']+|["']+$/g, "");
+const isAbsWin = (p) => /^[a-zA-Z]:[\\\/]/.test(unq(p));
+const normWin = (p) => win32.normalize(unq(p)).replace(/[\\]+$/, "").toLowerCase();
+const insideRoot = (p) => { const n = normWin(p); return n === ONE_ROOT || n.startsWith(ONE_ROOT + "\\"); };
+function resolveWin(p) {
+  if (isAbsWin(p)) return unq(p);
+  const base = cwdCandidates.find(isAbsWin);
+  return base ? win32.join(unq(base), unq(p)) : null; // unknown base -> cannot judge -> allow
+}
+function tokens(s) { return (s.match(/"[^"]*"|'[^']*'|[^\s;&|]+/g) || []); }
+function positionals(argStr, optsWithValue) {
+  const out = []; const t = tokens(argStr);
+  for (let i = 0; i < t.length; i++) {
+    const a = t[i];
+    if (optsWithValue.includes(a)) { i++; continue; }
+    if (a.startsWith("-")) continue;
+    out.push(a);
+  }
+  return out;
+}
+function oneFolderBlock(what, path) {
+  block(
+    "BLOCKED - " + what + " outside C:\\ProjectOperations2. (ONE_FOLDER)\n\n" +
+      "Everything for this project lives inside C:\\ProjectOperations2. Worktrees go in\n" +
+      "C:\\ProjectOperations2\\.local\\worktrees\\<name>, for example:\n" +
+      "  git -C C:\\ProjectOperations2 worktree add .local\\worktrees\\<name> -b <type>/<desc> origin/main\n\n" +
+      "Path: " + path + "\n" +
+      "Blocked: " + command.slice(0, 180)
+  );
+}
+{
+  const wt = command.match(/\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|-\S+))*\s+worktree\s+add\s+([^;&|\n]+)/i);
+  if (wt) {
+    const p = positionals(wt[1], ["-b", "-B", "--reason"])[0];
+    const r = p ? resolveWin(p) : null;
+    if (r && !insideRoot(r)) oneFolderBlock("creating a git worktree", r);
+  }
+  const cl = command.match(/\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|-\S+))*\s+clone\s+([^;&|\n]+)/i);
+  if (cl) {
+    const pos = positionals(cl[1], ["-b", "--branch", "-o", "--origin", "--depth", "-c", "--config", "--reference",
+      "--separate-git-dir", "--template", "-u", "--upload-pack", "--filter", "-j", "--jobs"]);
+    const dir = pos[1];
+    const r = dir ? resolveWin(dir) : null;
+    if (r && /^[cC]:/.test(r) && !insideRoot(r)) oneFolderBlock("cloning a repository", r);
+  }
+  const mk = command.match(/(?:^|[;&|]\s*)(?:mkdir|md|New-Item)\b([^;&|\n]*)/i);
+  if (mk) {
+    for (const t of tokens(mk[1])) {
+      const v = unq(t);
+      if (/^[cC]:[\\\/][^\\\/]+[\\\/]?$/.test(v) && !insideRoot(v)) oneFolderBlock("creating a folder at the root of C:", v);
+    }
+  }
 }
 
 process.exit(0); // allow

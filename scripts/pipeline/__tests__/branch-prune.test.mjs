@@ -539,7 +539,7 @@ test("B: a branch the ASCII manifest could not name faithfully is never eligible
 });
 
 test("B: the watcher clone is refused by path, not by convention", () => {
-  assert.match(src, /\$WATCHER_CLONE\s*=\s*"C:\\po-watcher\\ProjectOperations"/);
+  assert.match(src, /\$WATCHER_CLONE\s*=\s*"C:\\ProjectOperations2\\\.local\\tools\\po-watcher\\ProjectOperations"/);
   assert.match(src, /refusing to run in the watcher clone[\s\S]{0,120}exit \$EXIT_ABORT/);
 });
 

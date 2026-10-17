@@ -144,7 +144,7 @@ $ErrorActionPreference = "Continue"
 # ---------------------------------------------------------------------------
 
 # The watcher clone has its own branches and stashes and is not this script's business.
-$WATCHER_CLONE   = "C:\po-watcher\ProjectOperations"
+$WATCHER_CLONE   = "C:\ProjectOperations2\.local\tools\po-watcher\ProjectOperations"
 $UPSTREAM        = "origin/main"
 $SWEEP_REL       = "scripts\pipeline\status-sweep.ps1"
 $SWEEP_SAFE      = "SAFE TO ACT:"

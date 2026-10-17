@@ -109,11 +109,11 @@
       "options": {
         "env": {
           "PR_WATCHER_PROMPT_DIR": "C:\\ProjectOperations2\\docs\\pr-prompts",
-          "PR_WATCHER_REPO_ROOT": "C:\\po-watcher\\ProjectOperations"
+          "PR_WATCHER_REPO_ROOT": "C:\\ProjectOperations2\\.local\\tools\\po-watcher\\ProjectOperations"
         }
       },
       "isBackground": true,
-      "runOptions": { "runOn": "folderOpen" },
+      "runOptions": { "runOn": "default" },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"

@@ -148,3 +148,7 @@ graphify-extract.log
 # an `add -A` can pick them up. Deliberately NOT "Claude*" — "Claude Design/"
 # is a real tracked folder and must not be caught by a wildcard here.
 Claude outputs/
+
+# Phase 1 one-folder migration (2026-10-17): machine-local folder for worktrees,
+# backups, secrets and company data. Never committed; see .githooks/pre-commit.
+.local/

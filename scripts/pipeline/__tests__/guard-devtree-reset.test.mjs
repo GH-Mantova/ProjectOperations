@@ -118,6 +118,22 @@ describe("guard.mjs - DEVTREE_RESET rule", () => {
     assert.equal(code, 0, "reset in a worktree must be allowed");
   });
 
+  test("ALLOWS `git reset` in the watcher clone at its one-folder location (.local\\tools)", () => {
+    const { code } = runGuard({
+      command: "git reset --hard origin/fix/foo",
+      cwd: "C:\\ProjectOperations2\\.local\\tools\\po-watcher\\ProjectOperations",
+    });
+    assert.equal(code, 0, "the watcher clone moved under .local but is still not the dev tree");
+  });
+
+  test("ALLOWS `git reset` in a .local\\worktrees feature worktree", () => {
+    const { code } = runGuard({
+      command: "git reset --hard HEAD~1",
+      cwd: "C:\\ProjectOperations2\\.local\\worktrees\\fix-1",
+    });
+    assert.equal(code, 0, "a .local worktree is not the dev tree");
+  });
+
   test("ALLOWS `git merge --ff-only origin/main` in the dev tree (the prescribed replacement)", () => {
     const { code } = runGuard({
       command: "git merge --ff-only origin/main",
